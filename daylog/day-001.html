@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 001 · Matías Rathgeb</title>
+<meta name="description" content="Day 001 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 001 OF 1600 · 2026-08-28</p>
+    <h1>Day 001 — Starting with the basics</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-08-28 · <strong>Day:</strong> 1 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #1 — Summary statistics by hand</h2>
+<p>I started with the basics: computing summary statistics without a library,</p>
+<p>so I actually understand what the numbers mean instead of just calling</p>
+<p><code>df.describe()</code>. This is introductory — I am at the start of the program.</p>
+<p><strong>What I tried today:</strong> a small Python script that computes the mean,</p>
+<p>sample variance and standard deviation of a dataset by hand.</p>
+<pre><code>data = [3.1, 2.8, 4.2, 5.0, 4.8, 3.9, 4.1, 5.2, 3.4, 4.6]
+n = len(data)
+mean = sum(data) / n
+var = sum((x - mean) ** 2 for x in data) / (n - 1)  # sample variance
+sd = var ** 0.5
+print(f&quot;n={n}  mean={mean:.3f}  sample_var={var:.3f}  sd={sd:.3f}&quot;)
+print(f&quot;minimum={min(data):.2f}  maximum={max(data):.2f}&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>n=10  mean=4.110  sample_var=0.665  sd=0.816
+minimum=2.80  maximum=5.20</code></pre>
+<p><strong>What I understood from it:</strong> the sample variance divides by n-1, not n,</p>
+<p>because one degree of freedom is used to estimate the mean. I had to check</p>
+<p>this twice before it made sense. I am still learning this.</p>
+<p>---</p>
+<h2>Security #1 — Path traversal (CWE-22)</h2>
+<p>I studied path traversal: when user input reaches a filesystem path without</p>
+<p>checking, <code>../</code> can walk up outside the intended folder. This is a beginner</p>
+<p>topic for me; I am learning how the pattern works and how to prevent it.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code># UNSAFE — user input joined into a path without checking
+filename = request.args.get(&quot;file&quot;)            # e.g. &quot;../../../etc/passwd&quot;
+with open(&quot;/var/www/uploads/&quot; + filename) as f:
+    return f.read()</code></pre>
+<p><strong>What I understood about preventing it:</strong></p>
+<pre><code>import os
+BASE = &quot;/var/www/uploads&quot;
+path = os.path.realpath(os.path.join(BASE, filename))
+if not path.startswith(os.path.realpath(BASE) + os.sep):
+    raise PermissionError(&quot;traversal blocked&quot;)</code></pre>
+<p>Sandbox check (local only, on a scratch dir I made):</p>
+<pre><code>print(read(&quot;notes.txt&quot;))              # allowed
+print(read(&quot;../../../etc/hostname&quot;))  # blocked</code></pre>
+<p>Real output:</p>
+<pre><code>safe file
+BLOCKED: traversal</code></pre>
+<p><strong>What I understood:</strong> checking the resolved path stays inside the intended</p>
+<p>folder stops the climb. I ran this only in a local sandbox folder — not</p>
+<p>against anything real.</p>
+<p>---</p>
+<h2>Day 1 notes</h2>
+<ul><li>Concept #1: code ran, output above. ✔</li><li>Security #1: understood the idea, sandbox only. ✔</li><li>1599 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 001 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 005 — When the enemy plays back: minimax · Matías Rathgeb</title>
+<meta name="description" content="Day 005 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 005 OF 1600 · 2026-09-05</p>
+    <h1>Day 005 — When the enemy plays back: minimax</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-09-05 · <strong>Day:</strong> 5 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #5 — Adversarial search: minimax with alpha-beta pruning</h2>
+<p>My last two logs were about search with one agent (BFS, then A*). This</p>
+<p>week in MA08 (Intelligent Search) the board changes: now there are **two</p>
+<p>agents with opposite goals**. In a game, I cannot just &quot;find a path to the</p>
+<p>goal&quot; — my opponent is actively stopping me. That is <em>adversarial search</em>.</p>
+<p>The core idea is <strong>minimax</strong>. I am MAX, my opponent is MIN. We both play</p>
+<p>optimally. So the value of a position is:</p>
+<ul><li><strong>my</strong> turn → I take the move that <em>maximises</em> my outcome,</li><li><strong>my opponent&#x27;s</strong> turn → they take the move that <em>minimises</em> it.</li></ul>
+<p>The recursion explores the whole game tree assuming the worst-case</p>
+<p>opponent at every level. The problem: the full tree is huge. So minimax</p>
+<p>gets a partner — <strong>alpha-beta pruning</strong> — that remembers the best value</p>
+<p>MAX already has (<code>alpha</code>) and the best MIN already has (<code>beta</code>). When a</p>
+<p>branch can no longer improve the result, it is cut off. Pruning never</p>
+<p>changes the answer, only the number of nodes visited.</p>
+<p><strong>What I tried today:</strong> Tic-Tac-Toe. X is MAX, O is MIN. I asked the same</p>
+<p>position to two solvers — pure minimax, and minimax + alpha-beta — and</p>
+<p>counted how many nodes each one visits in the whole game from the empty</p>
+<p>board.</p>
+<pre><code>#!/usr/bin/env python3
+# minimax_ab.py — adversarial search: minimax + alpha-beta pruning on
+# Tic-Tac-Toe. Shows both return the SAME optimal value but alpha-beta
+# prunes far fewer nodes. MA08 (Intelligent Search) concept.
+# Pure stdlib. Day 5 concept.
+import sys
+
+sys.setrecursionlimit(10000)
+
+EMPTY, X, O = 0, 1, 2  # X is MAX, O is MIN
+
+
+def other(p):
+    return O if p == X else X
+
+
+def lines():
+    # all 8 winning triples on a 3x3 board (index 0..8)
+    return [(0,1,2),(3,4,5),(6,7,8),(0,3,6),(1,4,7),(2,5,8),(0,4,8),(2,4,6)]
+
+
+def winner(b):
+    for a,c,d in lines():
+        if b[a] and b[a]==b[c]==b[d]:
+            return b[a]
+    return 0
+
+
+def full(b):
+    return all(cell != EMPTY for cell in b)
+
+
+def terminal(b):
+    return winner(b) != 0 or full(b)
+
+
+def minimax(b, player):
+    &quot;&quot;&quot;Return (value). No pruning. value from MAX(X) perspective.&quot;&quot;&quot;
+    w = winner(b)
+    if w == X:
+        return 10
+    if w == O:
+        return -10
+    if full(b):
+        return 0
+    if player == X:
+        best = -float(&#x27;inf&#x27;)
+        for i in range(9):
+            if b[i] == EMPTY:
+                b[i] = X
+                best = max(best, minimax(b, other(X)))
+                b[i] = EMPTY
+        return best
+    else:
+        best = float(&#x27;inf&#x27;)
+        for i in range(9):
+            if b[i] == EMPTY:
+                b[i] = O
+                best = min(best, minimax(b, other(O)))
+                b[i] = EMPTY
+        return best
+
+
+def alphabeta(b, player, alpha, beta, nodes):
+    &quot;&quot;&quot;Return (value, nodes_explored). alpha-beta pruning.&quot;&quot;&quot;
+    w = winner(b)
+    if w == X:
+        return 10, nodes
+    if w == O:
+        return -10, nodes
+    if full(b):
+        return 0, nodes
+    nodes += 1
+    if player == X:
+        best = -float(&#x27;inf&#x27;)
+        for i in range(9):
+            if b[i] == EMPTY:
+                b[i] = X
+                v, nodes = alphabeta(b, other(X), alpha, beta, nodes)
+                b[i] = EMPTY
+                best = max(best, v)
+                alpha = max(alpha, v)
+                if beta &lt;= alpha:          # MIN can&#x27;t improve this branch
+                    break
+        return best, nodes
+    else:
+        best = float(&#x27;inf&#x27;)
+        for i in range(9):
+            if b[i] == EMPTY:
+                b[i] = O
+                v, nodes = alphabeta(b, other(O), alpha, beta, nodes)
+                b[i] = EMPTY
+                best = min(best, v)
+                beta = min(beta, v)
+                if beta &lt;= alpha:          # MAX can&#x27;t improve this branch
+                    break
+        return best, nodes
+
+
+def best_move(b, player, use_pruning=False):
+    &quot;&quot;&quot;Return (move_index, value) for player from board b.&quot;&quot;&quot;
+    best, move = float(&#x27;-inf&#x27;), -1
+    for i in range(9):
+        if b[i] == EMPTY:
+            b[i] = player
+            if use_pruning:
+                v, _ = alphabeta(b, other(player), -float(&#x27;inf&#x27;), float(&#x27;inf&#x27;), 0)
+            else:
+                v = minimax(b, other(player))
+            b[i] = EMPTY
+            if v &gt; best:
+                best, move = v, i
+    return move, best
+
+
+def fmt(b):
+    sym = {EMPTY: &#x27;.&#x27;, X: &#x27;X&#x27;, O: &#x27;O&#x27;}
+    return &quot;\n&quot;.join(&quot; &quot;.join(sym[b[r*3+c]] for c in range(3)) for r in range(3))
+
+
+def main():
+    # Board where it is X&#x27;s turn (MAX). X to move at an early mid-game state.
+    board = [X, EMPTY, O,
+             EMPTY, X, EMPTY,
+             EMPTY, EMPTY, EMPTY]
+
+    print(&quot;Adversarial search: minimax with alpha-beta pruning&quot;)
+    print(&quot;Board (X=MAX to move):&quot;)
+    print(fmt(board))
+
+    move_np, val_np = best_move(board, X, use_pruning=False)
+    move_p,  val_p  = best_move(board, X, use_pruning=True)
+
+    print(f&quot;\nBest move (minimax):        square {move_np}, value {val_np}&quot;)
+    print(f&quot;Best move (alpha-beta):     square {move_p},  value {val_p}&quot;)
+    assert move_np == move_p and val_np == val_p, &quot;pruning must not change result&quot;
+
+    # Full-tree node counts from the empty board
+    _, n_ab = alphabeta([EMPTY]*9, X, -float(&#x27;inf&#x27;), float(&#x27;inf&#x27;), 0)
+
+    # Real minimax node count (no pruning) via a wrapper
+    def count_minimax(b, player):
+        w = winner(b)
+        if w or full(b):
+            return 1
+        total = 1
+        for i in range(9):
+            if b[i] == EMPTY:
+                b[i] = player
+                total += count_minimax(b, other(player))
+                b[i] = EMPTY
+        return total
+
+    n_mm = count_minimax([EMPTY]*9, X)
+
+    print(f&quot;\nFull game tree from empty board:&quot;)
+    print(f&quot;  pure minimax nodes visited:  {n_mm}&quot;)
+    print(f&quot;  alpha-beta nodes visited:    {n_ab}&quot;)
+    print(f&quot;  pruning cut tree to {100.0*n_ab/n_mm:.1f}% of the size&quot;)
+    print(&quot;PASS: alpha-beta returned the SAME optimal move/value, &quot;
+          &quot;cheaper.&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    main()</code></pre>
+<p>Real output:</p>
+<pre><code>Adversarial search: minimax with alpha-beta pruning
+Board (X=MAX to move):
+X . O
+. X .
+. . .
+
+Best move (minimax):        square 1, value 10
+Best move (alpha-beta):     square 1,  value 10
+
+Full game tree from empty board:
+  pure minimax nodes visited:  549946
+  alpha-beta nodes visited:    10967
+  pruning cut tree to 2.0% of the size
+PASS: alpha-beta returned the SAME optimal move/value, cheaper.</code></pre>
+<p><strong>What I understood from it:</strong> both solvers picked the exact same move</p>
+<p>(square 1) with the same value (10 — X can force a win). The only</p>
+<p>difference is cost: pure minimax walked <strong>549,946</strong> nodes of the whole</p>
+<p>game tree, alpha-beta walked <strong>10,967</strong> — about <strong>2%</strong>. Pruning did not</p>
+<p>change what was optimal; it just stopped exploring branches that could</p>
+<p>never beat the best already found. That trade-off is the whole point:</p>
+<p>games too big to solve outright become solvable when you can safely ignore</p>
+<p>most of the tree. My own MA08 project does this on an <em>infinite</em></p>
+<p>Tic-Tac-Toe board, where the tree is even bigger.</p>
+<p>---</p>
+<h2>Security #5 — Server-Side Request Forgery (SSRF, CWE-918)</h2>
+<p><strong>What I learned about this topic — contained, sandbox only, no live targets:</strong></p>
+<p>SSRF is when a <em>server</em> can be tricked into making requests it should not.</p>
+<p>The classic shape: an app that fetches a URL the user supplies — an image</p>
+<p>proxy, a link previewer, a &quot;check this site is up&quot; tool. It validates</p>
+<p>nothing, so an attacker passes an <strong>internal</strong> address</p>
+<p>(<code>http://127.0.0.1:9876/metadata</code>, or the cloud metadata IP</p>
+<p><code>169.254.169.254</code>) and the server happily fetches it and echoes back the</p>
+<p>private answer — a way to read internal services <em>through</em> the public app.</p>
+<p>I built a fake &quot;internal metadata service&quot; on loopback and pointed an</p>
+<p>attacker-controlled URL at it.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code># VULNERABLE: trusts whatever host the user put in the URL.
+def fetch_avatar_vuln(url):
+    with urllib.request.urlopen(url, timeout=3) as r:  # follows any host
+        return r.read().decode()</code></pre>
+<p><strong>What I understood about preventing it:</strong> never blocklist IPs (attacker</p>
+<p>rotates them). Use an <strong>allowlist</strong> of the only host the app may fetch,</p>
+<p>and require http(s):</p>
+<pre><code>def fetch_avatar_fixed(url):
+    u = urlparse(url)
+    if u.scheme not in (&quot;http&quot;, &quot;https&quot;):
+        raise ValueError(&quot;rejected: scheme not http(s)&quot;)
+    if u.hostname != ALLOWED_HOST:      # the ONLY host the app may fetch
+        raise ValueError(f&quot;rejected: host {u.hostname!r} not in allowlist&quot;)
+    with urllib.request.urlopen(url, timeout=3) as r:
+        return r.read().decode()</code></pre>
+<p>Sandbox check (local only):</p>
+<pre><code>SSRF (CWE-918) demo — sandbox only, loopback service
+Internal metadata service listening on 127.0.0.1:9876
+
+[1] VULNERABLE proxy fetch_avatar_vuln()
+    attacker URL: http://127.0.0.1:9876/metadata
+    SERVER followed the URL and returned:
+      -&gt; &#x27;iam_role=Day5Lab_web_server (secret internal token)&#x27;
+
+[2] FIXED proxy fetch_avatar_fixed() (allowlist + scheme check)
+    correctly rejected: rejected: host &#x27;127.0.0.1&#x27; not in allowlist
+
+[3] Attempted bypasses against the allowlist guard
+    blocked: rejected: host &#x27;127.0.0.1&#x27; not in allowlist
+    blocked: rejected: host &#x27;127.0.0.1&#x27; not in allowlist
+    blocked: rejected: host &#x27;cdn.example-cdn.com.evil.com&#x27; not in allowlist
+
+Done. PoC contained to loopback; nothing external touched.</code></pre>
+<p><strong>What I understood:</strong> the bug is not &quot;the URL is weird&quot; — it is that the</p>
+<p>server treats a client-supplied URL as a trusted destination. My own fake</p>
+<p>metadata service (which I created on loopback) returned its secret token</p>
+<p>through the vulnerable proxy. The allowlist blocked the direct internal</p>
+<p>URL <strong>and</strong> the classic bypass shapes (<code>host@internal</code>, param noise, a</p>
+<p>lookalike hostname) because I validated the parsed <code>hostname</code> field, not</p>
+<p>the raw string. Allowlist over blocklist, always.</p>
+<p>---</p>
+<h2>Day 5 notes</h2>
+<ul><li>Concept #5: code ran, output above. ✔</li><li>Security #5: understood the idea, sandbox only. ✔</li><li>1595 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 005 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

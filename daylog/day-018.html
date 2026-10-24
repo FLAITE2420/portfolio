@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 018 — A p-value I computed with my own hands, and a request two servers could not agree on · Matías Rathgeb</title>
+<meta name="description" content="Day 018 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 018 OF 1600 · 2026-10-17</p>
+    <h1>Day 018 — A p-value I computed with my own hands, and a request two servers could not agree on</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-10-17 · <strong>Day:</strong> 18 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #18 — The one-sample t-test: the p-value is an area, not a verdict</h2>
+<p>Yesterday I measured that the 95% interval built with <code>1.96</code> misses more often</p>
+<p>than it promises when the sample is small, because <code>s</code> is itself noisy. Today&#x27;s</p>
+<p>block (MA02, <em>Probability and Statistics</em>, Week 5 — <em>Hypothesis Testing</em>) is the</p>
+<p>same defect seen from the other side. A test compares an observed mean to a</p>
+<p>claimed value:</p>
+<pre><code>t = (x_bar - mu0) / (s / sqrt(n))      df = n - 1</code></pre>
+<p>and then the p-value answers a narrow question: **if the null hypothesis were</p>
+<p>true, how often would a sample produce a <code>t</code> at least this extreme?** Small p</p>
+<p>means the data are unlikely under the claim — not that the claim is false, and</p>
+<p>not that the effect is big.</p>
+<p>The part I did not want to take on faith was the number itself. The course says</p>
+<p>&quot;two-sided p ≈ 0.038 (from t19)&quot; and moves on. I do not have scipy here, so I</p>
+<p>wrote the t distribution myself: the survival probability is a regularised</p>
+<p>incomplete beta, <code>P(|T| &gt;= |t|) = I_{df/(df+t^2)}(df/2, 1/2)</code>, which I computed</p>
+<p>with a continued fraction (modified Lentz). Then I ran the three course</p>
+<p>exercises through it, and after that I measured the promise the p-value makes:</p>
+<p>that a test at <code>alpha = 0.05</code> rejects a <strong>true</strong> null only 5% of the time.</p>
+<pre><code>#!/usr/bin/env python3
+# ttest.py - one-sample t-test, with the p-value computed from scratch.
+# MA02 (Probability and Statistics), Week 5: Hypothesis Testing.
+# Pure stdlib: no numpy, no scipy.
+import math
+import random
+
+
+def mean(xs):
+    return sum(xs) / len(xs)
+
+
+def stdev(xs):
+    m = mean(xs)
+    return math.sqrt(sum((x - m) ** 2 for x in xs) / (len(xs) - 1))
+
+
+def betacf(a, b, x):
+    # continued fraction for I_x(a,b), modified Lentz method
+    tiny = 1e-30
+    qab, qap, qam = a + b, a + 1.0, a - 1.0
+    c = 1.0
+    d = 1.0 - qab * x / qap
+    if abs(d) &lt; tiny:
+        d = tiny
+    d = 1.0 / d
+    h = d
+    for m in range(1, 300):
+        m2 = 2 * m
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d
+        if abs(d) &lt; tiny:
+            d = tiny
+        c = 1.0 + aa / c
+        if abs(c) &lt; tiny:
+            c = tiny
+        d = 1.0 / d
+        h *= d * c
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d
+        if abs(d) &lt; tiny:
+            d = tiny
+        c = 1.0 + aa / c
+        if abs(c) &lt; tiny:
+            c = tiny
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) &lt; 1e-15:
+            break
+    return h
+
+
+def betai(a, b, x):
+    if x &lt;= 0.0:
+        return 0.0
+    if x &gt;= 1.0:
+        return 1.0
+    lbeta = (math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+             + a * math.log(x) + b * math.log(1.0 - x))
+    front = math.exp(lbeta) / a
+    if x &lt; (a + 1.0) / (a + b + 2.0):
+        return front * betacf(a, b, x)
+    return 1.0 - math.exp(lbeta) / b * betacf(b, a, 1.0 - x)
+
+
+def t_sf_two_sided(t, df):
+    &quot;&quot;&quot;P(|T| &gt;= |t|) for a t distribution with df degrees of freedom.&quot;&quot;&quot;
+    if df &lt;= 0:
+        raise ValueError(&quot;df must be positive&quot;)
+    x = df / (df + t * t)
+    return betai(df / 2.0, 0.5, x)
+
+
+def one_sample_t(sample, mu0):
+    n = len(sample)
+    m = mean(sample)
+    s = stdev(sample)
+    t = (m - mu0) / (s / math.sqrt(n))
+    return t, n - 1, t_sf_two_sided(t, n - 1)
+
+
+def verdict(p, alpha):
+    return &quot;reject H0&quot; if p &lt; alpha else &quot;keep H0&quot;
+
+
+def course_checks():
+    # (label, x_bar, s, n, mu0, alpha, p the course prints)
+    cases = [
+        (&quot;XIII screen time&quot;, 5.6, 1.2, 20, 5.0, 0.05, 0.038),
+        (&quot;XIV  battery&quot;,     7.4, 0.8, 16, 8.0, 0.01, 0.0085),
+        (&quot;XV   steps&quot;,    7500.0, 900.0, 25, 8000.0, 0.05, 0.010),
+    ]
+    out = []
+    for name, xbar, s, n, mu0, alpha, claimed in cases:
+        t = (xbar - mu0) / (s / math.sqrt(n))
+        df = n - 1
+        out.append((name, t, df, t_sf_two_sided(t, df), alpha, claimed))
+    return out
+
+
+def type_one_rate(n, trials, seed):
+    &quot;&quot;&quot;How often does a test at alpha=0.05 reject a null that is TRUE?&quot;&quot;&quot;
+    rnd = random.Random(seed)
+    true_mu, sigma, alpha = 50.0, 5.0, 0.05
+    rej_t = rej_z = 0
+    for _ in range(trials):
+        xs = [rnd.gauss(true_mu, sigma) for _ in range(n)]
+        t, df, p = one_sample_t(xs, true_mu)
+        if p &lt; alpha:
+            rej_t += 1
+        # same data, judged with the normal 1.96 rule instead of t
+        m, s = mean(xs), stdev(xs)
+        z = (m - true_mu) / (s / math.sqrt(n))
+        if abs(z) &gt; 1.96:
+            rej_z += 1
+    return rej_t / trials, rej_z / trials
+
+
+def self_test():
+    # the t distribution with huge df is the normal: two-sided 5% cut = 1.96
+    assert abs(t_sf_two_sided(1.96, 10 ** 7) - 0.05) &lt; 1e-4
+    # symmetry: P(|T| &gt;= t) == P(|T| &gt;= -t)
+    assert abs(t_sf_two_sided(2.237, 19) - t_sf_two_sided(-2.237, 19)) &lt; 1e-12
+    # a t of zero must give a p of exactly one
+    assert abs(t_sf_two_sided(0.0, 5) - 1.0) &lt; 1e-12
+    print(&quot;self-test: ok&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    self_test()
+    print(&quot;\ncourse exercises, p-value recomputed from the t density:&quot;)
+    print(f&quot;  {&#x27;case&#x27;:18s} {&#x27;t&#x27;:&gt;8s} {&#x27;df&#x27;:&gt;3s} {&#x27;p (mine)&#x27;:&gt;9s} &quot;
+          f&quot;{&#x27;p (course)&#x27;:&gt;10s} {&#x27;alpha&#x27;:&gt;5s}  decision&quot;)
+    for name, t, df, p, alpha, claimed in course_checks():
+        print(f&quot;  {name:18s} {t:8.3f} {df:3d} {p:9.4f} {claimed:10.4f} &quot;
+              f&quot;{alpha:5.2f}  {verdict(p, alpha)}&quot;)
+
+    print(&quot;\nis alpha really 5%? 2000 samples from a TRUE null (mu=50, sigma=5):&quot;)
+    print(f&quot;  {&#x27;n&#x27;:&gt;4s} {&#x27;reject w/ t&#x27;:&gt;12s} {&#x27;reject w/ 1.96&#x27;:&gt;15s}&quot;)
+    for n in (10, 30, 100):
+        rt, rz = type_one_rate(n, 2000, seed=n)
+        print(f&quot;  {n:4d} {rt*100:11.1f}% {rz*100:14.1f}%&quot;)
+
+    print(&quot;\none worked example (n=20, seed=3, true mu=50, sigma=5):&quot;)
+    rnd = random.Random(3)
+    xs = [rnd.gauss(50.0, 5.0) for _ in range(20)]
+    t, df, p = one_sample_t(xs, 52.0)
+    print(f&quot;  x_bar = {mean(xs):.3f}   s = {stdev(xs):.3f}   n = {len(xs)}&quot;)
+    print(f&quot;  H0: mu = 52   t = {t:.3f}   df = {df}   p = {p:.4f}&quot;
+          f&quot;   -&gt; {verdict(p, 0.05)}&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>self-test: ok
+
+course exercises, p-value recomputed from the t density:
+  case                      t  df  p (mine) p (course) alpha  decision
+  XIII screen time      2.236  19    0.0375     0.0380  0.05  reject H0
+  XIV  battery         -3.000  15    0.0090     0.0085  0.01  reject H0
+  XV   steps           -2.778  24    0.0105     0.0100  0.05  reject H0
+
+is alpha really 5%? 2000 samples from a TRUE null (mu=50, sigma=5):
+     n  reject w/ t  reject w/ 1.96
+    10         5.1%            8.2%
+    30         5.0%            5.7%
+   100         5.7%            6.0%
+
+one worked example (n=20, seed=3, true mu=50, sigma=5):
+  x_bar = 49.707   s = 4.772   n = 20
+  H0: mu = 52   t = -2.149   df = 19   p = 0.0447   -&gt; reject H0</code></pre>
+<p><strong>What I understood from it:</strong> three things, in order of how much they cost me.</p>
+<p>First, my p-values agree with the course to three decimals on two of three cases,</p>
+<p>and on the battery case the course prints <strong>0.0085</strong> while the exact value is</p>
+<p><strong>0.0090</strong>. It is a rounding in the material, not a different method, and the</p>
+<p>decision is unchanged (both are below <code>alpha = 0.01</code>). I only know that because</p>
+<p>I computed it — reading the summary would have left me trusting a number I could</p>
+<p>not regenerate.</p>
+<p>Second, the test I built keeps its promise: <strong>5.1%, 5.0%, 5.7%</strong> of true nulls</p>
+<p>got rejected at <code>alpha = 0.05</code>, across n = 10, 30, 100. That is what a p-value</p>
+<p>is worth — a calibrated error rate, not a proof.</p>
+<p>Third, and this is the one that closes yesterday&#x27;s loop: judged with the same</p>
+<p>data but the <code>1.96</code> rule instead of the t quantile, the rejection rate at n = 10</p>
+<p>is <strong>8.2%</strong>, not 5%. Yesterday the 95% interval covered the truth <strong>91.8%</strong> of</p>
+<p>the time; today the same defect produces <strong>8.2%</strong> false rejections. `91.8 + 8.2</p>
+<p>= 100`. They are not two bugs, they are one number seen from two sides, and both</p>
+<p>come from using a multiplier that assumes I know <code>sigma</code> when I only have <code>s</code>.</p>
+<p>The n = 100 row showing 5.7% is not a second bug either — 2000 trials at a true</p>
+<p>5% has a standard error of about 0.5 points, so that is noise. I would rather</p>
+<p>write &quot;noise&quot; than invent a story for it.</p>
+<p>---</p>
+<h2>Security #18 — HTTP request smuggling, CL.TE: two parsers, one buffer (CWE-444)</h2>
+<p>Every bug so far was wrong inside one component. This one is wrong <strong>between</strong></p>
+<p>two: a proxy in front and an application behind it, both reading the same bytes,</p>
+<p>disagreeing about where one request ends. HTTP offers two ways to say how long a</p>
+<p>body is — <code>Content-Length</code> (a count) and <code>Transfer-Encoding: chunked</code> (an</p>
+<p>in-band terminator). When both headers appear, the specification lets a server</p>
+<p>choose, and if the front-end and the back-end choose differently, the bytes the</p>
+<p>front counts as <em>body</em> are bytes the back-end executes as a <em>new request</em>.</p>
+<p>The direction I built is <strong>CL.TE</strong>: the front-end trusts <code>Content-Length</code>, the</p>
+<p>back-end prefers <code>Transfer-Encoding: chunked</code>. The attacker puts the chunked</p>
+<p>terminator first, so the back-end finishes the request early and keeps the rest</p>
+<p>of the &quot;body&quot; pending in its buffer. When the next visitor&#x27;s bytes arrive on</p>
+<p>that reused upstream connection, they complete the hidden request — and the</p>
+<p>visitor, who asked for a public page, receives the answer to the hidden one.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code>POST /public HTTP/1.1
+Host: victim-site
+Content-Length: 52         &lt;- front-end counts this many bytes: &quot;body&quot;
+Transfer-Encoding: chunked &lt;- back-end stops at the 0 chunk right here
+
+0
+                             &lt;- back-end: request done, anonymous POST answered
+GET /admin HTTP/1.1
+Host: victim-site
+X-Fill:                      &lt;- no blank line: this stays pending</code></pre>
+<p>The hidden request has no terminating blank line on purpose. It is completed</p>
+<p>later, by the next visitor&#x27;s request line, which lands inside its headers. The</p>
+<p>front-end&#x27;s access control never sees <code>GET /admin</code> as a request — it saw it as</p>
+<p>body bytes of a harmless POST.</p>
+<p><strong>What I understood about preventing it:</strong> the bug does not exist in either</p>
+<p>parser alone; it exists in the <em>disagreement</em>, so a fix on one side is not a</p>
+<p>fix. The reliable rule is that a message with both framings is malformed, and a</p>
+<p>proxy that forwards should re-frame what it forwards instead of passing the</p>
+<p>ambiguity along:</p>
+<pre><code># FIXED: refuse to guess. Ambiguous framing is rejected, and the proxy
+# forwards with a single framing it computed itself.
+if &quot;transfer-encoding&quot; in headers and &quot;content-length&quot; in headers:
+    return b&quot;HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n&quot;</code></pre>
+<p>Sandbox check (two localhost sockets in /tmp — a front-end with an ACL on</p>
+<p><code>/admin</code> and a back-end without one, one reused upstream connection; no</p>
+<p>external target, no real host):</p>
+<pre><code>self-test: ok
+
+vulnerable front-end (trusts Content-Length, ACL on /admin)
+
+  --- run A ---
+  1) attacker sends a POST whose &#x27;body&#x27; carries the hidden prefix
+    [back-end] 47 bytes pending in buffer: b&#x27;GET /admin HTTP/1.1\r\nHost: victim-site\r\nX-Fill:&#x27;
+    attacker got: HTTP/1.1 200 OK
+  2) visitor asks for /public on the same upstream connection
+    visitor got: HTTP/1.1 200 OK
+    visitor body: &#x27;ADMIN AREA: 12 invoices, 3 unpaid&#x27;
+
+fixed front-end (rejects ambiguous framing)
+
+  --- run B ---
+  1) attacker sends a POST whose &#x27;body&#x27; carries the hidden prefix
+    [front] 400 ambiguous framing rejected (/public)
+    attacker got: HTTP/1.1 400 Bad Request
+  2) visitor asks for /public on the same upstream connection
+    visitor got: HTTP/1.1 200 OK
+    visitor body: &#x27;public page: hello&#x27;</code></pre>
+<p><strong>What I understood:</strong> in run A the visitor never asked for <code>/admin</code> and never</p>
+<p>received a redirect — they received the admin page with a <code>200</code>. The front-end&#x27;s</p>
+<p>ACL was not bypassed in the sense of being tricked; it was simply **not in the</p>
+<p>loop**, because the request it blocked was a different request than the one that</p>
+<p>executed. The 47 bytes sitting in the back-end buffer are the whole bug: state</p>
+<p>that one component owns and the other does not know about.</p>
+<p>That is also the limit of what this proves. Smuggling requires a hop — proxy,</p>
+<p>load balancer, CDN — and connection reuse between them. A single server talking</p>
+<p>directly to clients has nobody to disagree with. And the impact depends entirely</p>
+<p>on what sits behind that hop: bypassing an ACL, poisoning a cache, or handing</p>
+<p>one user another user&#x27;s response. I built the ACL-bypass shape because it is the</p>
+<p>one I can prove in twenty lines on loopback. Anything beyond loopback is not my</p>
+<p>business to test, and the fix is the same either way: one framing, decided by</p>
+<p>the proxy, and a 400 when the message is ambiguous.</p>
+<p>---</p>
+<h2>Day 18 notes</h2>
+<ul><li>Concept #18: t distribution and p-value computed from scratch, matched all three course exercises (0.0090 vs the course&#x27;s printed 0.0085), Type I error measured at 5.1/5.0/5.7% vs 8.2% for the 1.96 rule at n=10. ✔</li><li>Security #18: CL.TE request smuggling reproduced on loopback only — visitor asking for /public received the admin page; blocked by rejecting ambiguous framing. ✔</li><li>1582 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 018 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

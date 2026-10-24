@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 012 — The line with the widest street between the classes · Matías Rathgeb</title>
+<meta name="description" content="Day 012 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 012 OF 1600 · 2026-09-27</p>
+    <h1>Day 012 — The line with the widest street between the classes</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-09-27 · <strong>Day:</strong> 12 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #12 — Support Vector Machines: many lines split two classes, only one leaves the widest street</h2>
+<p>For the last few days I separated classes with trees and forests, which cut</p>
+<p>the space with <strong>axis-aligned</strong> questions. Today I went back to a straight</p>
+<p>line — the simplest separator there is — and found that even a line has a</p>
+<p>&quot;good&quot; and a &quot;bad&quot; version, and the good one is the whole point of the</p>
+<p><strong>support vector machine</strong>.</p>
+<p>Two clouds of points, one class on each side. A <strong>perceptron</strong> stops the</p>
+<p>moment it finds <em>any</em> line that gets the training points right. It does not</p>
+<p>care if the line passes a hair away from a point — it is satisfied. The</p>
+<p>course slides (MA01, Week 8 — <em>Advanced SVM and Ensembles</em>) call the extra</p>
+<p>thing the SVM adds the <strong>margin</strong>: the width of the empty street running</p>
+<p>between the two classes, with the line down the middle of it. The SVM&#x27;s rule</p>
+<p>is: <em>maximise that street</em>. The points sitting on the edges of the street are</p>
+<p>the <strong>support vectors</strong> — they are the only ones that decide where the line</p>
+<p>goes. Move any other point and the line does not budge.</p>
+<p><strong>What I tried today:</strong> I built both from scratch, pure standard library, on</p>
+<p>five separate two-cloud datasets. The perceptron updates weights only on</p>
+<p>mistakes. The SVM uses the <strong>hinge loss</strong>: a point that is already outside the</p>
+<p>street costs nothing, a point inside the street (or on the wrong side) is</p>
+<p>pushed out, and a small <strong>L2 regulariser</strong> keeps the weights as small as they</p>
+<p>can be while still fitting — small weights mean a wide street. Then I measured</p>
+<p>both the accuracy on unseen points and the width of the street each one left.</p>
+<pre><code>#!/usr/bin/env python3
+# svm_hinge.py - a linear support vector machine by subgradient descent.
+# MA01 (Machine Learning), Week 8 &quot;Advanced SVM and Ensembles&quot;. Pure stdlib.
+#
+# Two clouds of points, separated by a hidden line. A perceptron just needs
+# ANY line that gets them right; an SVM wants the line with the WIDEST street
+# (margin) between the classes. That extra objective is what the hinge loss
+# adds: points already outside the street cost 0, points inside the street --
+# or on the wrong side -- are pushed out. We measure the margin and compare
+# both classifiers on fresh test points.
+import random, math
+
+def make_data(seed, n):
+    rnd = random.Random(seed)
+    rows = []
+    for _ in range(n):
+        if rnd.random() &lt; 0.5:
+            x, y, lab = rnd.gauss(-1.2, 0.55), rnd.gauss(-0.9, 0.55), -1
+        else:
+            x, y, lab = rnd.gauss(1.2, 0.55), rnd.gauss(0.9, 0.55), +1
+        rows.append((x, y, lab))
+    return rows
+
+def perceptron(rows, epochs=50):
+    w1 = w2 = b = 0.0
+    for _ in range(epochs):
+        for x, y, lab in rows:
+            if lab * (w1 * x + w2 * y + b) &lt;= 0:
+                w1 += lab * x; w2 += lab * y; b += lab
+    return w1, w2, b
+
+def svm_hinge(rows, epochs=300, lr=0.01, C=1.0):
+    w1 = w2 = b = 0.0
+    n = len(rows)
+    for _ in range(epochs):
+        g1 = g2 = gb = 0.0
+        for x, y, lab in rows:
+            margin = lab * (w1 * x + w2 * y + b)
+            if margin &lt; 1:                       # inside the street -&gt; have to push
+                g1 += -lab * x; g2 += -lab * y; gb += -lab
+            else:                                # already outside -&gt; only regularise
+                g1 += 0.0; g2 += 0.0
+        # L2 regularisation w -&gt; wants the SMALLEST weights that still fit
+        g1 += w1 / C; g2 += w2 / C
+        w1 -= lr * g1 / n; w2 -= lr * g2 / n; b -= lr * gb / n
+    return w1, w2, b
+
+def margin_of(w1, w2, b):
+    norm = math.hypot(w1, w2)
+    return 2.0 / norm if norm else 0.0
+
+def acc(model, rows):
+    w1, w2, b = model
+    return sum(1 for x, y, lab in rows if (1 if w1 * x + w2 * y + b &gt; 0 else -1) == lab) / len(rows)
+
+SEEDS = 5
+p_tr = p_te = s_tr = s_te = 0.0
+p_marg = s_marg = 0.0
+for s in range(SEEDS):
+    rows = make_data(100 + s, 400)
+    random.Random(s).shuffle(rows)
+    train, test = rows[:300], rows[300:]
+    p = perceptron(train)
+    sv = svm_hinge(train)
+    p_tr += acc(p, train);  p_te += acc(p, test)
+    s_tr += acc(sv, train); s_te += acc(sv, test)
+    p_marg += margin_of(p[0], p[1], p[2])
+    s_marg += margin_of(sv[0], sv[1], sv[2])
+
+print(f&quot;{SEEDS} two-cloud datasets, 300 train / 100 test, averaged:&quot;)
+print(f&quot;Perceptron    train {p_tr/SEEDS:.3f}   test {p_te/SEEDS:.3f}   margin {p_marg/SEEDS:.3f}&quot;)
+print(f&quot;Linear SVM    train {s_tr/SEEDS:.3f}   test {s_te/SEEDS:.3f}   margin {s_marg/SEEDS:.3f}&quot;)</code></pre>
+<p>Real output (<code>python3 svm_hinge.py</code>, Python 3.11.15):</p>
+<pre><code>5 two-cloud datasets, 300 train / 100 test, averaged:
+Perceptron    train 1.000   test 0.992   margin 0.599
+Linear SVM    train 0.997   test 0.994   margin 1.805</code></pre>
+<p><strong>What I understood from it:</strong> the perceptron is perfect on the rows it saw —</p>
+<p><strong>1.000</strong> — and still scores lower on rows it never saw (<strong>0.992</strong> vs <strong>0.994</strong>),</p>
+<p>which is exactly the overfitting lesson from day 8 in a different costume. The</p>
+<p>SVM gives up a little on training (0.997, it deliberately tolerates a point or</p>
+<p>two inside the street) and buys the better test score. But the number that</p>
+<p>matters is the last column: the perceptron&#x27;s street is <strong>0.599</strong> wide, the</p>
+<p>SVM&#x27;s is <strong>1.805</strong> — triple the width. A wide street is not cosmetic; it is a</p>
+<p>buffer. The perceptron&#x27;s line merely <em>missed</em> the training points, so any new</p>
+<p>point near the boundary can flip it. The SVM&#x27;s line is as far as it can be</p>
+<p>from both classes, so new points have to travel much further before they land</p>
+<p>on the wrong side. That is the whole trade: a classifier that fits perfectly</p>
+<p>versus a classifier that leaves itself room — and the room is what survives</p>
+<p>contact with data it has not seen. The support vectors are the price of the</p>
+<p>room, and there are only ever a few of them.</p>
+<p>---</p>
+<h2>Security #12 — ReDoS: a regex that answers correctly, just not quickly (CWE-1333)</h2>
+<p><strong>What I learned about this topic — contained, sandbox only, no live targets:</strong></p>
+<p>Day 11 was a comparison that leaked <em>how long</em> it took to say no. This is</p>
+<p>almost the same shape from the other side: a <strong>regular expression</strong> that</p>
+<p>answers <em>correctly</em> — it matches what it should and rejects what it should —</p>
+<p>and still takes down the server, because of how long it takes to say no.</p>
+<p><strong>CWE-1333</strong>, inefficient regular expression complexity.</p>
+<p>Most regex engines (Python&#x27;s <code>re</code>, PCRE, JavaScript, Java) are <strong>backtracking</strong></p>
+<p>engines. To match <code>^(a+)+$</code> they try one way to split the input, fail, undo a</p>
+<p>step, try another. On a string that <em>almost</em> matches, the number of ways to try</p>
+<p>explodes: the inner <code>+</code> and the outer <code>+</code> both want to decide how many of the</p>
+<p><code>a</code>&#x27;s to take, so the engine enumerates essentially every partition of the run</p>
+<p>of <code>a</code>&#x27;s — and that doubles with each extra character. This is the famous</p>
+<p><strong>nested quantifier</strong> ReDoS. It is not a bug you can spot as &quot;wrong output&quot;;</p>
+<p>the regex is semantically correct. The bug is <strong>complexity</strong>.</p>
+<p>The danger is that the pattern often comes from <em>outside</em> — a user-supplied</p>
+<p>search, a validation rule, a routing URL — and it runs against a <em>long</em> piece</p>
+<p>of attacker-chosen input. One request with a short crafted string pins a CPU</p>
+<p>core; a few of them, and the worker pool is gone. It needs no bug in the</p>
+<p>application&#x27;s logic at all.</p>
+<p>I reproduced it in my sandbox (/tmp): the vulnerable nested-quantifier pattern</p>
+<p>against the same input handled by a linear-time rewrite, on input lengths from</p>
+<p>18 to 28 characters. Nothing leaves the machine; the string is made up.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code>import re
+VULN = re.compile(r&quot;^(a+)+$&quot;)   # nested quantifier: exponential backtracking
+VULN.match(&quot;a&quot; * 28 + &quot;!&quot;)      # correct answer (&quot;no match&quot;) after ~11 seconds</code></pre>
+<p><strong>What I understood about preventing it:</strong></p>
+<pre><code>import re, re2  # (or the regex module, or a timeout-wrapped call)
+SAFE = re.compile(r&quot;^a+$&quot;)      # quantify the run ONCE -&gt; linear time
+# Rules:
+#  - Never let a quantifier sit inside another quantifier ((a+)+, (a|a)*, .*.*).
+#  - Make alternatives disjoint and anchor the pattern.
+#  - Never compile a regex from untrusted input; if you must, prefer a
+#    non-backtracking engine (RE2/Go, Rust regex) or cap the input length.
+#  - Any regex run on user input should have a time budget, not just a match rule.</code></pre>
+<p>Sandbox check (local only, /tmp, no network, no target):</p>
+<pre><code>$ python3 redos.py
+Input = &#x27;a&#x27;*n + &#x27;!&#x27;  (does NOT match either pattern)
+  n     vulnerable (a+)+      safe a+
+ 18             11.81 ms       1.0 us
+ 20             47.51 ms       1.4 us
+ 22            189.95 ms       2.0 us
+ 24            740.37 ms       1.9 us
+ 26           2620.23 ms       1.3 us
+ 28          10938.90 ms      15.4 us
+
+The engine is not wrong -- it always answers &#x27;no match&#x27;.
+It is the time it takes to say no that grows without bound.</code></pre>
+<p><strong>What I understood:</strong> the vulnerable column multiplies by roughly **4× every</p>
+<p>two characters<strong> — 11.8 ms → 47.5 → 190 → 740 → 2620 → </strong>10.9 seconds**. Every</p>
+<p>extra two <code>a</code>&#x27;s is four times the work, because each <code>a</code> doubles the number of</p>
+<p>ways the engine can split the run between the inner and outer quantifier. The</p>
+<p>safe rewrite handles the <em>same</em> string, including the longest one, in **15</p>
+<p>microseconds** — and I could keep adding <code>a</code>&#x27;s all day without it noticing.</p>
+<p>Both patterns are correct; both return &quot;no match&quot; on every line. The difference</p>
+<p>is entirely in the cost of returning it. That is the same lesson as day 11 in</p>
+<p>new clothing: &quot;does it give the right answer?&quot; is not the security question.</p>
+<p>&quot;Can an attacker make the right answer expensive?&quot; is. A pattern is code, and</p>
+<p>code with a hidden exponential is a denial-of-service waiting for one short</p>
+<p>input.</p>
+<p>---</p>
+<h2>Day 12 notes</h2>
+<ul><li>Concept #12: linear SVM — perceptron margin 0.599 vs SVM margin 1.805; SVM test 0.994 vs perceptron 0.992. ✔</li><li>Security #12: ReDoS (CWE-1333) — <code>^(a+)+$</code> 11.8 ms → 10.9 s as input grows; <code>^a+$</code> flat at microseconds. ✔</li><li>1588 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 012 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

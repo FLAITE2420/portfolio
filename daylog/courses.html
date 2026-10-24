@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Courses — private · Matías Rathgeb</title>
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);text-decoration:none;}
+  a:hover{text-decoration:underline;}
+  .wrap{max-width:900px;margin:0 auto;padding:0 22px;}
+  header{padding:70px 0 30px;border-bottom:1px solid var(--border);}
+  header .kicker{font-size:13px;color:var(--gray);margin-bottom:14px;}
+  header h1{font-size:38px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;}
+  header p{color:var(--gray);font-size:14px;margin-top:10px;}
+  main{padding:40px 0 80px;}
+  .year{margin-bottom:48px;}
+  .year .yhead{display:flex;align-items:baseline;gap:14px;border-bottom:1px solid var(--black);padding-bottom:10px;margin-bottom:20px;}
+  .year .yn{font-size:24px;font-weight:600;}
+  .year .yd{font-size:14px;color:var(--gray);}
+  .course{display:flex;justify-content:space-between;align-items:baseline;padding:13px 0;border-bottom:1px solid var(--border);gap:20px;}
+  .course:hover{background:#f5f5f7;}
+  .course .ccode{font-size:12px;color:var(--gray);min-width:56px;}
+  .course .cmeta{font-size:12px;color:var(--gray);white-space:nowrap;}
+  .back{margin:30px 0;font-size:13px;color:var(--gray);}
+  footer{padding:30px 0 60px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">PRIVATE · password required</p>
+    <h1>Courses</h1>
+    <p>The 22 courses of the program. Only I can see this.</p>
+    <p class="back"><a href="/daylog/">← My daily log</a></p>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+
+    <div class="year">
+      <div class="yhead"><span class="yn">Year 1</span><span class="yd">Fundamentals</span></div>
+      <div class="course"><span><span class="ccode">PR01</span> Introduction to Applied Data Science &amp; AI</span><span class="cmeta">8 weeks</span></div>
+      <div class="course"><span><span class="ccode">PR02</span> Programming Fundamentals</span><span class="cmeta">8 weeks</span></div>
+      <div class="course"><span><span class="ccode">PR03</span> Discrete Mathematics</span><span class="cmeta">8 weeks</span></div>
+      <div class="course"><span><span class="ccode">PR04</span> Human-Data-Computer Interaction</span><span class="cmeta">8 weeks</span></div>
+      <div class="course"><span><span class="ccode">MA01</span> Machine Learning</span><span class="cmeta">8 weeks</span></div>
+      <div class="course"><span><span class="ccode">MA02</span> Probability &amp; Statistics</span><span class="cmeta">4 weeks</span></div>
+    </div>
+
+    <div class="year">
+      <div class="yhead"><span class="yn">Year 2</span><span class="yd">Core</span></div>
+      <div class="course"><span><span class="ccode">PR05</span> Data Structures &amp; Algorithms</span><span class="cmeta">8 weeks</span></div>
+      <div class="course"><span><span class="ccode">PR06</span> Evolutionary AI</span><span class="cmeta">8 weeks</span></div>
+      <div class="course"><span><span class="ccode">PR07</span> Software Engineering</span><span class="cmeta">7 weeks</span></div>
+      <div class="course"><span><span class="ccode">PR08</span> Data Visualisation</span><span class="cmeta">9 weeks</span></div>
+      <div class="course"><span><span class="ccode">PR09</span> Linear Algebra</span><span class="cmeta">7 weeks</span></div>
+      <div class="course"><span><span class="ccode">MA03</span> AI-Ops / MLOps &amp; DevOps</span><span class="cmeta">8 weeks</span></div>
+    </div>
+
+    <div class="year">
+      <div class="yhead"><span class="yn">Year 3</span><span class="yd">Specialization</span></div>
+      <div class="course"><span><span class="ccode">PR10</span> Data Engineering</span><span class="cmeta">7 weeks</span></div>
+      <div class="course"><span><span class="ccode">PR11</span> Design of Interactive Systems</span><span class="cmeta">9 weeks</span></div>
+      <div class="course"><span><span class="ccode">PR12</span> Calculus</span><span class="cmeta">4 weeks</span></div>
+      <div class="course"><span><span class="ccode">MA04</span> Deep Learning</span><span class="cmeta">4 weeks</span></div>
+      <div class="course"><span><span class="ccode">MA05</span> eXtended Reality</span><span class="cmeta">4 weeks</span></div>
+      <div class="course"><span><span class="ccode">MA06</span> Responsible Research &amp; Innovation</span><span class="cmeta">10 weeks</span></div>
+    </div>
+
+    <div class="year">
+      <div class="yhead"><span class="yn">Year 4</span><span class="yd">Advanced + Capstone</span></div>
+      <div class="course"><span><span class="ccode">MA07</span> Operations Research</span><span class="cmeta">4 weeks</span></div>
+      <div class="course"><span><span class="ccode">MA08</span> Intelligent Search</span><span class="cmeta">4 weeks</span></div>
+      <div class="course"><span><span class="ccode">ZM001</span> Data Science Capstone</span><span class="cmeta">4 weeks</span></div>
+      <div class="course"><span><span class="ccode">ZM002</span> Professional Practice</span><span class="cmeta">4 weeks</span></div>
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to public site</a> · Private area · Matías Rathgeb</p>
+  </div>
+</footer>
+
+</body>
+</html>

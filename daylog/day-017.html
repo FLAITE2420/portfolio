@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 017 — The range that catches the truth most of the time, and what the missing times cost · Matías Rathgeb</title>
+<meta name="description" content="Day 017 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 017 OF 1600 · 2026-10-15</p>
+    <h1>Day 017 — The range that catches the truth most of the time, and what the missing times cost</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-10-15 · <strong>Day:</strong> 17 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #17 — Confidence intervals: the 95% is the method, not the specific range</h2>
+<p>I had been reading accuracy numbers and means as if they were facts. Today&#x27;s</p>
+<p>block (MA02, <em>Probability and Statistics</em>, Week 2 — *Confidence Intervals &amp;</p>
+<p>Uncertainty*) is about the honest version of a number: instead of reporting one</p>
+<p>estimate, report a <strong>range</strong> and say how often ranges built that way actually</p>
+<p>contain the truth.</p>
+<p>The trap the course spells out is the sentence almost everyone says:</p>
+<p>&quot;there is a 95% probability that the true mean is inside <strong>this</strong> interval.&quot;</p>
+<p>That is wrong. The true mean is a fixed value — for a specific interval it is</p>
+<p>either in there (100%) or it is not (0%), and I do not get to see which. The</p>
+<p>95% describes the <strong>procedure</strong>: if I built the interval the same way many</p>
+<p>times from many samples, about 95 out of 100 of those intervals would cover the</p>
+<p>true mean.</p>
+<p>Rather than trust that claim, I measured it. I simulated samples from a known</p>
+<p>distribution (true mean 50, sigma 5), built a 95% interval by the normal</p>
+<p>approximation <code>mean ± 1.96 · s/√n</code>, repeated it 2000 times, and counted how</p>
+<p>often the interval actually caught the true mean. Standard library only.</p>
+<pre><code>#!/usr/bin/env python3
+# confidence_interval.py - a confidence interval is a lasso, not a claim.
+# MA02 (Probability and Statistics), Week 2: Confidence Intervals &amp; Uncertainty.
+# The course trap: &quot;there is a 95% chance the true mean is in THIS interval&quot;
+# is wrong. The true mean is fixed; the 95% describes the METHOD. If I built
+# the interval the same way 1000 times, ~950 would cover the true mean.
+# So instead of trusting the formula, I measured the coverage by simulation.
+# Pure stdlib, no numpy, no scipy.
+import math
+import random
+
+
+def mean(xs):
+    return sum(xs) / len(xs)
+
+
+def stdev(xs, m):
+    # sample standard deviation (n-1 denominator)
+    return math.sqrt(sum((x - m) ** 2 for x in xs) / (len(xs) - 1))
+
+
+def ci95(sample):
+    # normal-approximation 95% CI: x_bar +/- z * s / sqrt(n), z = 1.96
+    m = mean(sample)
+    s = stdev(sample, m)
+    half = 1.96 * s / math.sqrt(len(sample))
+    return m - half, m + half
+
+
+def coverage(true_mean, n, trials, seed):
+    rnd = random.Random(seed)
+    hits = 0
+    widths = []
+    for _ in range(trials):
+        sample = [rnd.gauss(true_mean, 5.0) for _ in range(n)]
+        lo, hi = ci95(sample)
+        widths.append(hi - lo)
+        if lo &lt;= true_mean &lt;= hi:
+            hits += 1
+    return hits / trials, mean(widths)
+
+
+def self_test():
+    s = [10.0] * 9 + [11.0]
+    lo, hi = ci95(s)
+    assert abs(mean(s) - (lo + hi) / 2) &lt; 1e-9     # interval centred on the mean
+    assert lo &lt; mean(s) &lt; hi                        # and it contains it
+    print(&quot;self-test: ok&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    self_test()
+    TRUE = 50.0
+    print(f&quot;true mean = {TRUE}, sigma = 5.0, nominal confidence = 95%, 2000 trials each&quot;)
+    for n in (10, 30, 100):
+        cov, w = coverage(TRUE, n, 2000, seed=n)
+        print(f&quot;  n={n:3d}: coverage = {cov*100:.1f}%   mean width = {w:.2f}&quot;)
+
+    rnd = random.Random(7)
+    sample = [rnd.gauss(TRUE, 5.0) for _ in range(30)]
+    m = mean(sample)
+    s = stdev(sample, m)
+    lo, hi = ci95(sample)
+    print(&quot;\nworked example (n=30, seed=7):&quot;)
+    print(f&quot;  sample mean = {m:.3f}&quot;)
+    print(f&quot;  sample sd   = {s:.3f}&quot;)
+    print(f&quot;  95% CI      = [{lo:.3f}, {hi:.3f}]  (width {hi - lo:.3f})&quot;)
+    print(f&quot;  true mean {TRUE} inside this one? {lo &lt;= TRUE &lt;= hi}&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>self-test: ok
+true mean = 50.0, sigma = 5.0, nominal confidence = 95%, 2000 trials each
+  n= 10: coverage = 91.8%   mean width = 6.04
+  n= 30: coverage = 94.3%   mean width = 3.55
+  n=100: coverage = 94.0%   mean width = 1.95
+
+worked example (n=30, seed=7):
+  sample mean = 50.171
+  sample sd   = 4.273
+  95% CI      = [48.642, 51.700]  (width 3.058)
+  true mean 50.0 inside this one? True</code></pre>
+<p><strong>What I understood from it:</strong> the width and the coverage pull against each</p>
+<p>other, exactly the way the course describes the trade-off. At n=100 the mean</p>
+<p>interval is only <strong>1.95</strong> wide and still catches the truth <strong>94.0%</strong> of the</p>
+<p>time; at n=10 the interval has to be <strong>6.04</strong> wide to stay near the promise.</p>
+<p>More data buys a narrower range for the same confidence — that is the whole</p>
+<p>bargain.</p>
+<p>The part I did <strong>not</strong> expect: at n=10 the coverage came out <strong>91.8%</strong>, not 95%.</p>
+<p>That is not a bug, it is a real limitation I had been ignoring. I used <code>1.96</code></p>
+<p>(a number that is correct only when the sample standard deviation <code>s</code> is the</p>
+<p>population sigma), and with only ten points <code>s</code> is itself noisy and tends to be</p>
+<p>too small, so the interval is too tight and misses more often than it claims.</p>
+<p>The remedy is the t-distribution (a bigger multiplier that grows as n shrinks),</p>
+<p>which is why the course keeps saying the normal interval is an approximation.</p>
+<p>So the honest lesson is not &quot;95% means 95%&quot; — it is &quot;a confidence interval is</p>
+<p>only as good as the assumption behind its multiplier.&quot; Same formula, honest</p>
+<p>audit of when it stops being true.</p>
+<p>---</p>
+<h2>Security #17 — CRLF injection / HTTP response splitting: a URL that ends the header block (CWE-113)</h2>
+<p>The bugs I studied so far put something <em>inside</em> a value or changed its <em>type</em>.</p>
+<p>This one abuses the one character HTTP cannot ignore: the line break. In HTTP,</p>
+<p>a response is a status line, then headers, then a blank line, then the body.</p>
+<p>Headers are separated by <code>CRLF</code> (<code>\r\n</code>), and the blank line <em>is</em> two CRLFs.</p>
+<p>If a program copies user input into a header value and does not remove CR/LF</p>
+<p>from it, the input does not stay in the value — it **closes the header section</p>
+<p>and opens new header lines** the attacker chose.</p>
+<p>The classic shape is a redirect endpoint that builds <code>Location:</code> from a query</p>
+<p>parameter. Send a URL that still contains <code>%0d%0a</code> and the server decodes it</p>
+<p>into a real newline after the value has been placed in the header:</p>
+<pre><code>GET /redirect?url=/home%0d%0aSet-Cookie:%20admin=1 HTTP/1.1</code></pre>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code># VULNERABLE: user input goes into a header value with CR/LF still in it.
+# The extra CR/LF ends the header block; &quot;Set-Cookie: admin=1&quot; becomes a real
+# header the client believes came from the server.
+resp = (&quot;HTTP/1.1 302 Found\r\n&quot;
+        f&quot;Location: {target}\r\n&quot;        # target straight from ?url=, unsanitised
+        &quot;Content-Length: 0\r\n\r\n&quot;)</code></pre>
+<p><strong>What I understood about preventing it:</strong> a header value is not a string that</p>
+<p>can hold anything — CR and LF are structural and must never survive into it. The</p>
+<p>fix is to strip them (or percent-encode them) before the value is written, so</p>
+<p>the injected text stays inert inside the <code>Location</code> field where it means</p>
+<p>nothing. Framework header writers that reject <code>\r</code>/<code>\n</code> in values already do</p>
+<p>this; hand-built responses usually do not.</p>
+<pre><code># FIXED: a header value may never contain CR or LF. Strip them and the
+# injected text becomes garbage inside the value, not new headers.
+target = target.replace(&quot;\r&quot;, &quot;&quot;).replace(&quot;\n&quot;, &quot;&quot;)
+resp = (&quot;HTTP/1.1 302 Found\r\n&quot;
+        f&quot;Location: {target}\r\n&quot;
+        &quot;Content-Length: 0\r\n\r\n&quot;)</code></pre>
+<p>Sandbox check (local loopback socket server only, in /tmp; a hand-written raw</p>
+<p>request because library HTTP clients refuse to send CR/LF in a value — an</p>
+<p>attacker is not bound by that check):</p>
+<pre><code>self-test: ok
+
+vulnerable server
+  honest request: url=/home
+    HTTP/1.1 302 Found
+    Location: /home
+    Content-Length: 0
+    -&gt; injected headers: none
+  attack request: url=/home%0d%0aSet-Cookie:%20admin=1%0d%0aX-Injected:%20yes
+    HTTP/1.1 302 Found
+    Location: /home
+    Set-Cookie: admin=1
+    X-Injected: yes
+    Content-Length: 0
+    -&gt; injected headers: [&#x27;Set-Cookie&#x27;, &#x27;X-Injected&#x27;]
+
+fixed server
+  honest request: url=/home
+    HTTP/1.1 302 Found
+    Location: /home
+    Content-Length: 0
+    -&gt; injected headers: none
+  attack request: url=/home%0d%0aSet-Cookie:%20admin=1%0d%0aX-Injected:%20yes
+    HTTP/1.1 302 Found
+    Location: /homeSet-Cookie: admin=1X-Injected: yes
+    Content-Length: 0
+    -&gt; injected headers: none
+
+the honest request looks identical on both servers. the difference
+only appears when the value carries CR/LF bytes.</code></pre>
+<p><strong>What I understood:</strong> the honest request is byte-for-byte identical on the two</p>
+<p>servers — that is why the bug survives review. Nothing looks wrong because the</p>
+<p>developer only ever tests with clean values. The moment the value carries</p>
+<p><code>\r\n</code>, the vulnerable server emits <strong>two headers the attacker wrote</strong></p>
+<p>(<code>Set-Cookie: admin=1</code>, <code>X-Injected: yes</code>), and a browser would honour the</p>
+<p>cookie as if the site had set it. The fixed server keeps the same bytes but they</p>
+<p>collapse into one useless <code>Location</code> value. This is not just header pollution: if</p>
+<p>the response body can be shaped too, the same trick splits the response and lets</p>
+<p>an attacker inject content the browser renders as the site. The lesson is</p>
+<p>narrower than &quot;sanitise input&quot; — it is that some characters are <strong>syntax</strong>, not</p>
+<p>data, and a header value is a place where a line break is always syntax.</p>
+<p>---</p>
+<h2>Day 17 notes</h2>
+<ul><li>Concept #17: confidence-interval coverage measured, output above (n=100 → 94.0% coverage, width 1.95; n=10 under-covers at 91.8%). ✔</li><li>Security #17: CRLF injection / response splitting reproduced, then blocked, on a localhost sandbox only. ✔</li><li>1583 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 017 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

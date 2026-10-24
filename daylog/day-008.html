@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 008 — The model that memorises instead of learning · Matías Rathgeb</title>
+<meta name="description" content="Day 008 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 008 OF 1600 · 2026-09-18</p>
+    <h1>Day 008 — The model that memorises instead of learning</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-09-18 · <strong>Day:</strong> 8 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #8 — Overfitting, and why a model must be checked on data it never saw</h2>
+<p>Yesterday&#x27;s k-means and the gradient-descent day before were both about</p>
+<p><em>getting</em> a model. Today is about the question I kept skipping: **how do I</p>
+<p>know the model is actually good?** The course (MA01, Model Evaluation and</p>
+<p>Validation) gives the honest answer, and it is uncomfortable: *a model that</p>
+<p>scores perfectly on the data it was trained on may be worthless.*</p>
+<p>The idea is <strong>overfitting</strong>. If I let a model be flexible enough, it can</p>
+<p>bend itself to hit every single training point — noise included. It has not</p>
+<p>learned the <em>pattern</em>, it has <strong>memorised the accidents</strong>. On data it has</p>
+<p>never seen, it then falls apart. The textbook way to catch this is to</p>
+<p><strong>never score the model on the same rows it learned from</strong>. Split the data:</p>
+<p>fit on the <strong>train</strong> set, grade on a held-out <strong>test</strong> set. The gap between</p>
+<p>the two is the whole lesson.</p>
+<p>A flexible model drives <em>train</em> error toward zero; <em>test</em> error drops for a</p>
+<p>while, then turns around and climbs. That turning point is the sweet spot —</p>
+<p>and the thing I would never see if I only looked at training error.</p>
+<p><strong>What I tried today:</strong> fit polynomials of growing degree to a noisy sine</p>
+<p>curve, and watch train error keep falling while test error starts rising.</p>
+<p>The least-squares solve (normal equations + Gaussian elimination, with</p>
+<p>partial pivoting) is written by hand — no libraries, so I can actually see</p>
+<p>what &quot;fitting&quot; is.</p>
+<pre><code>#!/usr/bin/env python3
+# overfit.py — overfitting demo: train error vs test error.
+# MA01 (Machine Learning), model evaluation block. Pure stdlib.
+import math
+import random
+
+def solve(matrix, rhs):
+    &quot;&quot;&quot;Solve A x = b via Gaussian elimination with partial pivoting.&quot;&quot;&quot;
+    n = len(matrix)
+    a = [row[:] + [rhs[i]] for i, row in enumerate(matrix)]
+    for col in range(n):
+        piv = max(range(col, n), key=lambda r: abs(a[r][col]))
+        if abs(a[piv][col]) &lt; 1e-12:
+            raise ValueError(&quot;singular matrix&quot;)
+        a[col], a[piv] = a[piv], a[col]
+        for r in range(col + 1, n):
+            factor = a[r][col] / a[col][col]
+            for c in range(col, n + 1):
+                a[r][c] -= factor * a[col][c]
+    x = [0.0] * n
+    for r in range(n - 1, -1, -1):
+        s = a[r][n] - sum(a[r][c] * x[c] for c in range(r + 1, n))
+        x[r] = s / a[r][r]
+    return x
+
+def poly_fit(xs, ys, degree):
+    &quot;&quot;&quot;Least-squares fit of a polynomial of given degree.&quot;&quot;&quot;
+    m = degree + 1
+    xtx = [[0.0] * m for _ in range(m)]
+    xty = [0.0] * m
+    for x, y in zip(xs, ys):
+        powers = [x ** k for k in range(m)]
+        for i in range(m):
+            xty[i] += powers[i] * y
+            for j in range(m):
+                xtx[i][j] += powers[i] * powers[j]
+    return solve(xtx, xty)
+
+def poly_predict(coeffs, x):
+    return sum(c * (x ** k) for k, c in enumerate(coeffs))
+
+def rmse(coeffs, xs, ys):
+    errs = [(poly_predict(coeffs, x) - y) ** 2 for x, y in zip(xs, ys)]
+    return math.sqrt(sum(errs) / len(errs))
+
+random.seed(42)
+TRUE = math.sin
+
+# 20 training points on [-3, 3] ...
+xs_train = [-3 + 6 * i / 19 for i in range(20)]
+ys_train = [TRUE(x) + random.gauss(0, 0.15) for x in xs_train]
+# ... and 20 fresh test points the model has never seen.
+xs_test = [-3 + 6 * (i + 0.5) / 20 for i in range(20)]
+ys_test = [TRUE(x) + random.gauss(0, 0.15) for x in xs_test]
+
+print(f&quot;{&#x27;degree&#x27;:&gt;6} | {&#x27;train RMSE&#x27;:&gt;10} | {&#x27;test RMSE&#x27;:&gt;10}&quot;)
+print(&quot;-&quot; * 34)
+for degree in (1, 3, 5, 9, 15):
+    coeffs = poly_fit(xs_train, ys_train, degree)
+    print(f&quot;{degree:&gt;6} | {rmse(coeffs, xs_train, ys_train):&gt;10.4f} &quot;
+          f&quot;| {rmse(coeffs, xs_test, ys_test):&gt;10.4f}&quot;)</code></pre>
+<p>Real output (<code>python3 overfit.py</code>, Python 3.11.15):</p>
+<pre><code>degree | train RMSE |  test RMSE
+----------------------------------
+     1 |     0.4619 |     0.3932
+     3 |     0.1192 |     0.1430
+     5 |     0.0956 |     0.1620
+     9 |     0.0684 |     0.1874
+    15 |     0.0341 |     0.2313</code></pre>
+<p><strong>What I understood from it:</strong> exactly the shape the theory predicts. Going</p>
+<p>from degree 1 to 3, <em>both</em> errors dropped (train 0.4619 → 0.1192, test</p>
+<p>0.3932 → 0.1430) — the model was genuinely learning the curve. But past</p>
+<p>degree 3 they <strong>split apart</strong>: training error kept sliding down to 0.0341,</p>
+<p>while test error turned around and climbed to 0.2313 — worse than the plain</p>
+<p>degree-3 fit. The degree-15 model is not smarter; it is *memorising the 20</p>
+<p>noise points* I fed it, and I can only see that because I graded it on 20</p>
+<p>rows it never saw. If I had trusted training error, I would have shipped the</p>
+<p>worst model on the board. That is the trap: **the number that looks the</p>
+<p>best on the data you trained on is often the number that lies the most.**</p>
+<p>---</p>
+<h2>Security #8 — JWT signature bypass (CWE-347)</h2>
+<p><strong>What I learned about this topic — contained, sandbox only, no live targets:</strong></p>
+<p>A JWT (JSON Web Token) is three base64 chunks joined by dots:</p>
+<p><code>header.payload.signature</code>. The header names the signing algorithm (<code>alg</code>),</p>
+<p>the payload carries the claims (<code>{&quot;sub&quot;: &quot;alice&quot;, &quot;role&quot;: &quot;user&quot;}</code>), and the</p>
+<p>signature is what proves the payload was not tampered with. The whole point</p>
+<p>of the token is that the <em>server</em> signs it with a key the client never sees.</p>
+<p>The class of bug — **CWE-347, improper verification of a cryptographic</p>
+<p>signature<strong> — appears when the server lets the </strong>token&#x27;s own header** tell</p>
+<p>it how to verify. Two classic flavours:</p>
+<ul><li><strong><code>alg: none</code></strong> — the header declares <em>no</em> signature. A careless verifier</li></ul>
+<p>  reads <code>alg</code>, sees &quot;none&quot;, and accepts the payload as-is, with an empty</p>
+<p>  signature. The attacker forges any claim (e.g. <code>role: admin</code>) without ever</p>
+<p>  learning the secret.</p>
+<ul><li><strong>algorithm confusion</strong> — the server is configured for <code>RS256</code> (public-key)</li></ul>
+<p>  but a library accepts <code>HS256</code> (shared-key); the attacker signs with the</p>
+<p>  <em>public</em> key as if it were the HMAC secret.</p>
+<p>The root cause is the same in both: **the attacker controls the <code>alg</code></p>
+<p>field, so the attacker controls the verification logic.** I reproduced the</p>
+<p><code>none</code> case in my own sandbox (/tmp), with two hand-written toy verifiers —</p>
+<p>one that trusts the header, one that fixes it. No network, no real target.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code># VULNERABLE: alg is read from attacker-controlled header
+header = json.loads(b64d(header_b64))
+if header[&quot;alg&quot;] == &quot;none&quot;:          # attacker sets this to &quot;none&quot;
+    return json.loads(b64d(payload_b64))   # accepted, no signature check
+expected = hmac.new(SECRET, f&quot;{header_b64}.{payload_b64}&quot;, hashlib.sha256)
+if hmac.compare_digest(b64d(sig_b64), expected.digest()):
+    return json.loads(b64d(payload_b64))</code></pre>
+<p><strong>What I understood about preventing it:</strong> pin the algorithm on the</p>
+<p><strong>server</strong>, never from the token, and make the signature check</p>
+<p><strong>mandatory</strong> — no branch can skip it. Compare with a constant-time</p>
+<p>function so the check itself does not leak. If only one algorithm is ever</p>
+<p>issued, an allowlist of exactly that one is the fix.</p>
+<pre><code># SAFE: server chooses the algorithm; header cannot override it
+header = json.loads(b64d(header_b64))
+if header.get(&quot;alg&quot;) != &quot;HS256&quot;:     # allowlist — &quot;none&quot; is rejected
+    raise ValueError(&quot;unsupported alg&quot;)
+expected = hmac.new(SECRET, f&quot;{header_b64}.{payload_b64}&quot;, hashlib.sha256)
+if not hmac.compare_digest(b64d(sig_b64), expected.digest()):
+    raise ValueError(&quot;invalid signature&quot;)</code></pre>
+<p>Sandbox check (local only, /tmp, hand-made verifiers, no real tokens):</p>
+<pre><code>$ python3 jwt_bypass.py
+legit user token : user
+forged token     : eyJhbG...In0.        (header alg=none, empty signature)
+vulnerable verifier says: {&#x27;sub&#x27;: &#x27;mallory&#x27;, &#x27;role&#x27;: &#x27;admin&#x27;}
+FIXED verifier says: REJECTED -&gt; unsupported alg</code></pre>
+<p><strong>What I understood:</strong> the vulnerable verifier handed me <code>role: admin</code></p>
+<p>without me knowing the secret at all — I only had to set <code>alg</code> to <code>none</code></p>
+<p>and blank the signature. That is the lesson: the secret protects nothing if</p>
+<p>the server lets the attacker choose <em>how</em> it is checked. The forged token</p>
+<p>took a handful of bytes and zero crypto, which is why &quot;we sign our tokens&quot;</p>
+<p>means nothing on its own — the <em>verification path</em> is the real security</p>
+<p>boundary, and <code>alg: none</code> is the door that gets left open when nobody pins</p>
+<p>it. The fixed verifier rejected the exact same bytes with one line: an</p>
+<p>allowlist that says the algorithm is the server&#x27;s decision, not the token&#x27;s.</p>
+<p>---</p>
+<h2>Day 8 notes</h2>
+<ul><li>Concept #8: overfitting shown by hand — train RMSE fell to 0.0341 while test RMSE rose to 0.2313. ✔</li><li>Security #8: JWT signature bypass (CWE-347) understood, sandbox only (/tmp), no live targets. ✔</li><li>1592 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 008 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

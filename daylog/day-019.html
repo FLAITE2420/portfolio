@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 019 — A slope I can read as a sentence, and the hostname that gets checked before the one that gets fetched · Matías Rathgeb</title>
+<meta name="description" content="Day 019 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 019 OF 1600 · 2026-10-18</p>
+    <h1>Day 019 — A slope I can read as a sentence, and the hostname that gets checked before the one that gets fetched</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-10-18 · <strong>Day:</strong> 19 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #19 — Simple linear regression: the slope is a sentence about units, and r only measures straightness</h2>
+<p>The last four days were about deciding whether a difference is real: intervals,</p>
+<p>p-values, error rates. Today&#x27;s block (MA02, <em>Probability and Statistics</em>, Week 6</p>
+<p>— <em>Simple Linear Regression &amp; Correlation</em>) changes the question. Not &quot;is this</p>
+<p>group different&quot; but &quot;for each extra hour of <code>x</code>, how much does <code>y</code> move&quot;.</p>
+<p>The line is fit by least squares, and the two coefficients are just sums:</p>
+<pre><code>b1 = Sxy / Sxx      Sxy = sum((x - x_bar)(y - y_bar))      Sxx = sum((x - x_bar)^2)
+b0 = y_bar - b1 * x_bar</code></pre>
+<p>What matters to me is that <code>b1</code> is not an abstract number. It carries units:</p>
+<p>points per hour, kcal per step, productivity points per hour of sleep. If I</p>
+<p>cannot say the sentence out loud with units, I do not understand the fit yet.</p>
+<p>And then there is <code>r</code>, which the course defines as the sample correlation. I had</p>
+<p>been treating it as &quot;how good the model is&quot;. It is narrower than that: it</p>
+<p>measures how close the cloud is to a <em>straight</em> line. The curriculum notes this</p>
+<p>explicitly — <code>r = 0</code> means no <strong>linear</strong> association, not no association.</p>
+<p>The course prints the answers for its exercises (<code>b1 = 3.883</code>, <code>b0 = 50.300</code>,</p>
+<p><code>r ≈ 0.994</code>, <code>SE(b1) = 0.155</code>, <code>t = 24.998</code>). I did not want to copy them, so I</p>
+<p>computed all of them from the raw pairs with plain sums and then asserted my</p>
+<p>numbers against the printed ones — if they disagreed, the post would not build.</p>
+<p><strong>What I tried today:</strong> a regression from first principles (no numpy), checked</p>
+<p>against two exercises from the Week 6 slides, plus one dataset built to break</p>
+<p>the meaning of <code>r</code>.</p>
+<pre><code>#!/usr/bin/env python3
+# regress.py - least-squares line and r, computed from sums. No numpy.
+# MA02 (Probability and Statistics), Week 6: Simple Linear Regression &amp; Correlation.
+import math
+
+def ols(xs, ys):
+    n = len(xs)
+    mx, my = sum(xs) / n, sum(ys) / n
+    sxx = sum((x - mx) ** 2 for x in xs)
+    syy = sum((y - my) ** 2 for y in ys)
+    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    b1 = sxy / sxx
+    b0 = my - b1 * mx
+    ss_res = sum((y - (b0 + b1 * x)) ** 2 for x, y in zip(xs, ys))
+    s = math.sqrt(ss_res / (n - 2))          # residual standard error
+    se_b1 = s / math.sqrt(sxx)               # SE of the slope
+    t = b1 / se_b1
+    r = sxy / math.sqrt(sxx * syy)           # sample correlation
+    return dict(n=n, mx=mx, my=my, b0=b0, b1=b1, r=r, r2=r * r,
+                s=s, se_b1=se_b1, t=t, df=n - 2)
+
+def show(name, xs, ys, want):
+    f = ols(xs, ys)
+    print(f&quot;{name}&quot;)
+    print(f&quot;  n={f[&#x27;n&#x27;]}  x_bar={f[&#x27;mx&#x27;]:.3f}  y_bar={f[&#x27;my&#x27;]:.3f}&quot;)
+    print(f&quot;  y_hat = {f[&#x27;b0&#x27;]:.3f} + {f[&#x27;b1&#x27;]:.3f} x&quot;)
+    print(f&quot;  r={f[&#x27;r&#x27;]:.4f}  r2={f[&#x27;r2&#x27;]:.4f}  SE(b1)={f[&#x27;se_b1&#x27;]:.4f}  &quot;
+          f&quot;t={f[&#x27;t&#x27;]:.3f}  df={f[&#x27;df&#x27;]}&quot;)
+    for k, v in want.items():
+        got = f[k]
+        flag = &quot;OK&quot; if abs(got - v) &lt; 0.0015 else &quot;MISMATCH&quot;
+        print(f&quot;  course says {k}={v:&lt;8} -&gt; computed {got:.4f}  [{flag}]&quot;)
+    print()
+    return f
+
+# Exercise XVI: study hours vs exam score (the course prints b1=3.883, b0=50.300, r=0.994, t=24.998)
+x16 = [2, 3, 4, 5, 6, 6, 7, 8, 9, 10]
+y16 = [58, 62, 65, 68, 74, 76, 78, 82, 85, 88]
+f16 = show(&quot;Exercise XVI - study hours vs exam score&quot;,
+           x16, y16, dict(b1=3.883, b0=50.300, r=0.994, se_b1=0.155, t=24.998))
+
+# Exercise XVII: sleep vs productivity (course prints b1=0.742, b0=1.846, r=0.981, t=12.392)
+x17 = [5, 6, 6, 7, 7, 8, 8, 9]
+y17 = [5.5, 6.0, 6.5, 7.0, 7.2, 7.8, 8.0, 8.3]
+f17 = show(&quot;Exercise XVII - sleep vs productivity&quot;,
+           x17, y17, dict(b1=0.742, b0=1.846, r=0.981, t=12.392))
+
+# The trap: r = 0 does not mean &quot;no relationship&quot;, only &quot;no LINEAR one&quot;.
+xp = [-3, -2, -1, 0, 1, 2, 3]
+yp = [9, 4, 1, 0, 1, 4, 9]
+fp = ols(xp, yp)
+print(&quot;Parabola y = x^2 on x = -3..3&quot;)
+print(f&quot;  r={fp[&#x27;r&#x27;]:.4f}   r2={fp[&#x27;r2&#x27;]:.4f}   slope={fp[&#x27;b1&#x27;]:.4f}&quot;)
+print(f&quot;  every point sits exactly on y = x^2: &quot;
+      f&quot;{all(y == x * x for x, y in zip(xp, yp))}&quot;)
+
+# Assert against the course so the post cannot drift from the printed answers.
+assert abs(f16[&quot;b1&quot;] - 3.883) &lt; 0.0015 and abs(f16[&quot;b0&quot;] - 50.300) &lt; 0.0015
+assert abs(f16[&quot;r&quot;] - 0.994) &lt; 0.001 and abs(f16[&quot;t&quot;] - 24.998) &lt; 0.01
+assert abs(f17[&quot;b1&quot;] - 0.742) &lt; 0.0015 and abs(f17[&quot;r&quot;] - 0.981) &lt; 0.001
+assert abs(fp[&quot;r&quot;]) &lt; 1e-12
+print(&quot;\nself-test: ok&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>Exercise XVI - study hours vs exam score
+  n=10  x_bar=6.000  y_bar=73.600
+  y_hat = 50.300 + 3.883 x
+  r=0.9937  r2=0.9874  SE(b1)=0.1553  t=24.998  df=8
+  course says b1=3.883    -&gt; computed 3.8833  [OK]
+  course says b0=50.3     -&gt; computed 50.3000  [OK]
+  course says r=0.994    -&gt; computed 0.9937  [OK]
+  course says se_b1=0.155    -&gt; computed 0.1553  [OK]
+  course says t=24.998   -&gt; computed 24.9982  [OK]
+
+Exercise XVII - sleep vs productivity
+  n=8  x_bar=7.000  y_bar=7.037
+  y_hat = 1.846 + 0.742 x
+  r=0.9810  r2=0.9624  SE(b1)=0.0599  t=12.392  df=6
+  course says b1=0.742    -&gt; computed 0.7417  [OK]
+  course says b0=1.846    -&gt; computed 1.8458  [OK]
+  course says r=0.981    -&gt; computed 0.9810  [OK]
+  course says t=12.392   -&gt; computed 12.3918  [OK]
+
+Parabola y = x^2 on x = -3..3
+  r=0.0000   r2=0.0000   slope=0.0000
+  every point sits exactly on y = x^2: True
+
+self-test: ok</code></pre>
+<p><strong>What I understood from it:</strong> the slope is a sentence with units — &quot;+3.9 points</p>
+<p>per extra study hour&quot;, &quot;+0.74 productivity points per extra hour of sleep&quot; — and</p>
+<p>the <code>t</code> on that slope is the same signal-to-noise idea as yesterday, just with</p>
+<p><code>df = n - 2</code> because two parameters ate two degrees of freedom.</p>
+<p>The parabola is the part I will keep. Every single point lies exactly on</p>
+<p><code>y = x²</code>; there is no noise at all; and <code>r = 0.0000</code> with <code>r² = 0.0000</code>. A model</p>
+<p>that trusts <code>r</code> as &quot;strength of relationship&quot; concludes there is nothing there,</p>
+<p>on the one dataset where the relationship is perfect. So <code>r</code> is not a truth</p>
+<p>score — it is the fit of one specific shape. Before quoting it I have to look at</p>
+<p>the scatter, or I am measuring my assumption instead of the data.</p>
+<p>And <code>r² = 0.987</code> on the study-hours data does not mean &quot;98.7% correct&quot;. It means</p>
+<p>98.7% of the <em>variance</em> in scores is explained by a straight line in hours —</p>
+<p>which says nothing about whether hours <em>cause</em> scores. That is the next trap,</p>
+<p>and the course points at it with the geolocation exercise (latitude and</p>
+<p>longitude correlate; neither causes the other — geography does).</p>
+<p>---</p>
+<h2>Security #19 — SSRF: the hostname that gets checked is not always the hostname that gets fetched</h2>
+<p>The classes are add up: path traversal, mass assignment, operator injection, CRLF</p>
+<p>in headers, request smuggling. Today is the one where the application makes the</p>
+<p>request <em>for</em> the attacker: server-side request forgery.</p>
+<p>The shape is a feature that takes a URL from the user — import from URL, avatar</p>
+<p>by link, webhook test, PDF renderer, image proxy. The app fetches it. If the app</p>
+<p>can reach things the user cannot (a metadata endpoint, an internal admin panel,</p>
+<p>a database port, <code>localhost</code> services), then the user just borrowed the app&#x27;s</p>
+<p>network position.</p>
+<p>The part I wanted to prove is that the guard people write first does not guard</p>
+<p>the thing that matters. A hostname allowlist is checked on the string the user</p>
+<p>submitted. Then the HTTP client follows a <code>302</code> — and the check is already two</p>
+<p>steps behind. The same hole shows up in address notation: <code>127.0.0.1</code> written as</p>
+<p><code>2130706433</code> is the same host to the resolver and a completely different string</p>
+<p>to a denylist.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code># VULNERABLE: the check runs once, on the first host, before the client follows redirects.
+def fetch(url):
+    host = urllib.parse.urlparse(url).hostname
+    if host not in ALLOW:                 # &lt;- &quot;127.0.0.1&quot; passes, it is our own app
+        raise PermissionError
+    return urllib.request.urlopen(url)    # &lt;- 302 to the internal service is followed silently</code></pre>
+<p>Two variants of the naive guard, both defeated:</p>
+<pre><code>guard A  hostname allowlist   -&gt; attacker uses an allowed host that 302s inward
+guard B  string denylist      -&gt; attacker writes the same IP as 2130706433</code></pre>
+<p><strong>What I understood about preventing it:</strong></p>
+<pre><code># FIXED: resolve, refuse internal address ranges, and re-check on every hop.
+def fetch(url, max_hops=3):
+    for _ in range(max_hops + 1):
+        host, port = parse(url)
+        for addr in resolve(host, port):          # all A/AAAA answers, not just the first
+            if ip_address(addr).is_private or is_loopback(addr) or is_link_local(addr):
+                raise PermissionError
+        resp = open_without_following_redirects(url)
+        if resp is a redirect:
+            url = urljoin(url, resp.Location)     # back to the top: resolve and check again
+            continue
+        return resp</code></pre>
+<p>Three things had to be true at once for this to work: (1) the decision is made</p>
+<p>on the <strong>resolved address</strong>, not on the string, (2) <strong>every</strong> answer from the</p>
+<p>resolver is checked, not just the first, and (3) the check repeats after <strong>each</strong></p>
+<p>redirect. Removing any one of the three reopens the hole — a redirect-follower</p>
+<p>with a good range check still lands internally, and a range check that runs once</p>
+<p>still misses hop two. A network-level egress policy on the app&#x27;s own container is</p>
+<p>the belt to this suspenders.</p>
+<p>Sandbox check (two loopback servers in <code>/tmp</code> — a &quot;public&quot; app that redirects, and</p>
+<p>an &quot;internal&quot; service that answers with a fake token unless the request carries a</p>
+<p>trusted header; no external target, no real host):</p>
+<pre><code>public app   http://127.0.0.1:38067/
+internal svc http://127.0.0.1:41955/  (reachable in-network only)
+
+[1] guard A = hostname allowlist. Attacker uses an ALLOWED app that 302s inward.
+    host checked: 127.0.0.1
+    -&gt; 200 &#x27;internal service: internal-admin-token=REDACTED&#x27;
+
+[2] guard B = denylist of strings (the usual &#x27;fix&#x27;). Same address, decimal form.
+    url: http://2130706433:41955/price   host string seen: 2130706433
+    -&gt; 200 &#x27;internal service: internal-admin-token=REDACTED&#x27;
+
+[3] resolved-and-range-checked fetcher against both payloads
+    -&gt; blocked: host 127.0.0.1 resolves to internal 127.0.0.1
+    -&gt; blocked: host 2130706433 resolves to internal 127.0.0.1
+
+[4] the internal caller itself (trusted code path, its own client)
+    -&gt; 200 &#x27;internal service: price feed ok&#x27;
+
+internal service counters: tagged=1 forged=2
+
+self-test: ok</code></pre>
+<p><strong>What I understood:</strong> in both attacks the app did exactly what it was told, and</p>
+<p>it did it <em>after</em> passing its own check. The check was not wrong, it was in the</p>
+<p>wrong place in time — a decision about a URL, made before the URL became a</p>
+<p>different URL. That is the general shape I keep meeting this week: a validation</p>
+<p>that happens on the input and not on the thing the input turns into. Same family</p>
+<p>as the smuggling day (the front-end validated a request that was not the request</p>
+<p>that executed) and the CRLF day (the string was safe as data, and became a header</p>
+<p>when it moved one layer down).</p>
+<p>The honest limit: my &quot;internal&quot; service is on loopback, so what I proved is the</p>
+<p><em>bypass logic</em>, not the reach of any real network. In the wild the same code</p>
+<p>reaches link-local metadata addresses (<code>169.254.169.254</code>), internal DNS names,</p>
+<p>and admin ports — which is exactly why the class is worth a CVE budget. I am not</p>
+<p>going to point any of this at anything that is not mine.</p>
+<p>---</p>
+<h2>Day 19 notes</h2>
+<ul><li>Concept #19: least squares from sums; matched both Week 6 exercises exactly (b1 3.8833 / 0.7417, r 0.9937 / 0.9810, t 24.998 / 12.392) and showed <code>r = 0</code> on a perfect parabola. ✔</li><li>Security #19: SSRF via redirect and via decimal-notation address; blocked by resolve-then-range-check on every hop. Loopback sandbox only. ✔</li><li>1581 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 019 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

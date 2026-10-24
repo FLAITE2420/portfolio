@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 003 — Search that proves itself · Matías Rathgeb</title>
+<meta name="description" content="Day 003 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 003 OF 1600 · 2026-08-30</p>
+    <h1>Day 003 — Search that proves itself</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-08-30 · <strong>Day:</strong> 3 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #3 — Problem solving by search: BFS on a state space</h2>
+<p>PR01 frames AI problems as <em>search</em>: from a starting state, explore a</p>
+<p>space of states until you reach a goal. Search algorithms split into</p>
+<p><strong>informed</strong> (a heuristic guides which node to expand next) and</p>
+<p><strong>uninformed</strong> (no guidance, just systematic exploration). I studied</p>
+<p>Breadth-First Search (BFS), an uninformed method that expands the</p>
+<p>frontier level by level. Because every move costs the same, the first</p>
+<p>time BFS touches the goal that path is guaranteed to be the shortest. I</p>
+<p>am at the very start of the program, so this is a first pass.</p>
+<p><strong>What I tried today:</strong> BFS on a 5x5 grid (0 = open, 1 = wall), tracking</p>
+<p>each node&#x27;s parent so I can rebuild the shortest path after the goal is</p>
+<p>found.</p>
+<pre><code># bfs_grid.py — uninformed search, first-found path is shortest
+from collections import deque
+
+GRID = [
+    [0, 0, 0, 0, 1],
+    [1, 1, 0, 1, 0],
+    [0, 0, 0, 1, 0],
+    [0, 1, 1, 1, 0],
+    [0, 0, 0, 0, 0],
+]
+START, GOAL = (0, 0), (4, 4)
+DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+
+def bfs(start, goal):
+    frontier = deque([start])          # FIFO queue = level by level
+    came_from = {start: None}
+    explored = 0
+    while frontier:
+        cur = frontier.popleft()
+        explored += 1
+        if cur == goal:
+            return came_from, explored
+        r, c = cur
+        for dr, dc in DIRS:
+            nxt = (r + dr, c + dc)
+            nr, nc = nxt
+            if not (0 &lt;= nr &lt; 5 and 0 &lt;= nc &lt; 5):
+                continue
+            if GRID[nr][nc] == 1 or nxt in came_from:
+                continue
+            came_from[nxt] = cur
+            frontier.append(nxt)
+    return None, explored
+
+def reconstruct(came_from, start, goal):
+    path, cur = [], goal
+    while cur is not None:
+        path.append(cur)
+        cur = came_from[cur]
+    return path[::-1]
+
+came_from, explored = bfs(START, GOAL)
+path = reconstruct(came_from, START, GOAL)
+print(&quot;BFS (uninformed) on a 5x5 grid, 1 = wall&quot;)
+print(f&quot;Start: {START}  Goal: {GOAL}&quot;)
+print(f&quot;Nodes explored: {explored}&quot;)
+print(f&quot;Shortest path ({len(path)-1} steps):&quot;)
+for i, (r, c) in enumerate(path):
+    m = &quot;START&quot; if (r, c) == START else (&quot;GOAL&quot; if (r, c) == GOAL else &quot;&quot;)
+    print(f&quot;  {i}: ({r},{c}) {m}&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>BFS (uninformed search) on a 5x5 grid, 1 = wall
+Start: (0, 0)  Goal: (4, 4)
+Nodes explored: 14
+Shortest path (12 steps):
+  0: (0,0) START
+  1: (0,1)
+  2: (0,2)
+  3: (1,2)
+  4: (2,2)
+  5: (2,1)
+  6: (2,0)
+  7: (3,0)
+  8: (4,0)
+  9: (4,1)
+  10: (4,2)
+  11: (4,3)
+  12: (4,4) GOAL</code></pre>
+<p><strong>What I understood from it:</strong> BFS only needs to &quot;see&quot; each state once</p>
+<p>(the <code>came_from</code> dict skips re-visits), and exploring 14 nodes out of 25</p>
+<p>was enough to find the goal. The key insight is the FIFO queue: it</p>
+<p>guarantees I check everything at distance k before anything at distance</p>
+<p>k+1, which is exactly why the first hit on the goal is the shortest path.</p>
+<p>The trade-off — it can eat memory on big spaces — is why informed search</p>
+<p>(and heuristics) exists. That is next on my list.</p>
+<p>---</p>
+<h2>Security #3 — SQL injection (CWE-89)</h2>
+<p>I studied SQL injection: when user input is stitched straight into a SQL</p>
+<p>string, a crafted value can change the query&#x27;s logic. A classic demo is a</p>
+<p>login bypass with a payload that makes the WHERE clause always true. I</p>
+<p>ran this only against a throwaway in-memory SQLite database in /tmp —</p>
+<p>never against a real system.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code># UNSAFE — user input concatenated into the SQL string
+q = f&quot;SELECT username FROM users WHERE username=&#x27;{username}&#x27; AND pass=&#x27;{password}&#x27;&quot;</code></pre>
+<p>A username of <code>&#x27; OR &#x27;1&#x27;=&#x27;1&#x27; --</code> turns that into:</p>
+<pre><code>WHERE username=&#x27;&#x27; OR &#x27;1&#x27;=&#x27;1&#x27; --&#x27; AND pass=&#x27;...&#x27;</code></pre>
+<p>The <code>--</code> comments out the rest, and <code>&#x27;1&#x27;=&#x27;1&#x27;</code> is always true, so the</p>
+<p>query returns the first user — the attacker &quot;logs in&quot; as someone else.</p>
+<p><strong>What I understood about preventing it:</strong> never build SQL with</p>
+<p>concatenation. Use <strong>parameterized queries</strong> — the driver escapes the</p>
+<p>values automatically, so the input stays data, not code.</p>
+<pre><code># SAFE — parameters, values are escaped by the driver
+q = &quot;SELECT username FROM users WHERE username=? AND pass=?&quot;
+DB.execute(q, (username, password))</code></pre>
+<p>Sandbox check (local only, in-memory DB, no real target):</p>
+<pre><code>SQL injection (CWE-89) demo — local sandbox, in-memory DB
+Attacker username payload: &quot;&#x27; OR &#x27;1&#x27;=&#x27;1&#x27; --&quot;
+
+UNSAFE login (concatenated SQL): logged in as -&gt; &#x27;alice&#x27;
+SAFE login (parameterized):      logged in as -&gt; None
+
+Expected: unsafe returns &#x27;alice&#x27; (bypass), safe returns None.</code></pre>
+<p><strong>What I understood:</strong> the concatenated version let the payload escape</p>
+<p>its string, turn <code>AND pass=&#x27;...&#x27;</code> into a comment and force the WHERE to</p>
+<p>be true (sandbox logged in as <code>alice</code>), while the parameterized version</p>
+<p>treated the whole payload as a literal username and returned no row. One</p>
+<p>small detail cost me time: the payload needs balanced quotes (<code>&#x27;1&#x27;=&#x27;1&#x27;</code></p>
+<p>not <code>&#x27;1&#x27;=&#x27;1</code>) or the string literal doesn&#x27;t close and the trick silently</p>
+<p>fails — SQLi is exacting. Rule I keep: queries are parameterized, always.</p>
+<p>---</p>
+<h2>Day 3 notes</h2>
+<ul><li>Concept #3: BFS ran, found the 12-step shortest path, output above. ✔</li><li>Security #3: SQLi bypass + parameterized fix understood, sandbox only. ✔</li><li>1597 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 003 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

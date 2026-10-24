@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 004 — Heuristics that make search smart · Matías Rathgeb</title>
+<meta name="description" content="Day 004 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 004 OF 1600 · 2026-09-04</p>
+    <h1>Day 004 — Heuristics that make search smart</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-09-04 · <strong>Day:</strong> 4 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #4 — Informed search: A* with an admissible heuristic</h2>
+<p>Last log I did uninformed search (BFS walks the whole grid to find the</p>
+<p>shortest path). That is correct but wasteful: it explores every reachable</p>
+<p>cell in increasing-depth order whether or not it heads toward the goal.</p>
+<p>Informed search fixes that by adding a <strong>heuristic</strong> — an estimate of how</p>
+<p>far any cell is from the goal. A* combines both costs:</p>
+<pre><code>f(n) = g(n) + h(n)</code></pre>
+<p>where <code>g(n)</code> is the real cost travelled so far and <code>h(n)</code> is the heuristic</p>
+<p>guess to the goal. When <code>h</code> is <em>admissible</em> (never overestimates), A* is</p>
+<p>guaranteed to return an optimal path — but it expands far fewer nodes than</p>
+<p>BFS because it always explores the most promising frontier cell first.</p>
+<p><strong>What I tried today:</strong> a 6×6 grid with walls, Manhattan distance as the</p>
+<p>heuristic (admissible on a grid where each move costs 1). Goal <code>(5,5)</code>.</p>
+<pre><code># astar_grid.py — A* informed search on a weighted grid.
+# A heuristic (Manhattan distance) guides the search to the goal faster
+# than an uninformed BFS. Reconstructs the shortest path.
+# Pure stdlib. Day 4 concept: informed search vs uninformed (BFS).
+import heapq
+
+
+def astar(grid, start, goal):
+    &quot;&quot;&quot;grid: list of lists, 0=open, 1=wall. Returns (path, expanded).&quot;&quot;&quot;
+    rows, cols = len(grid), len(grid[0])
+    open_h = []  # heap of (f, g, r, c)
+    heapq.heappush(open_h, (0, 0, start[0], start[1]))
+    g = {start: 0}
+    came = {start: None}
+    expanded = 0
+    closed = set()
+
+    def h(r, c):
+        # Manhattan distance to goal — admissible heuristic
+        return abs(r - goal[0]) + abs(c - goal[1])
+
+    while open_h:
+        f, gcur, r, c = heapq.heappop(open_h)
+        node = (r, c)
+        if node in closed:
+            continue
+        closed.add(node)
+        expanded += 1
+        if node == goal:
+            path = []
+            n = node
+            while n is not None:
+                path.append(n)
+                n = came[n]
+            return path[::-1], expanded
+        for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nr, nc = r + dr, c + dc
+            if 0 &lt;= nr &lt; rows and 0 &lt;= nc &lt; cols and grid[nr][nc] != 1:
+                ng = gcur + 1
+                nb = (nr, nc)
+                if nb not in g or ng &lt; g[nb]:
+                    g[nb] = ng
+                    came[nb] = node
+                    heapq.heappush(open_h, (ng + h(nr, nc), ng, nr, nc))
+    return None, expanded  # no path
+
+
+def main():
+    grid = [
+        [0, 0, 0, 0, 1, 0],
+        [1, 1, 0, 1, 1, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 1, 1, 1, 0, 1],
+        [0, 0, 0, 0, 0, 0],
+        [0, 1, 0, 0, 1, 0],
+    ]
+    start, goal = (0, 0), (5, 5)
+    path, expanded = astar(grid, start, goal)
+
+    print(f&quot;Grid {len(grid)}x{len(grid[0])}, start={start} goal={goal}&quot;)
+    print(f&quot;Path length (nodes): {len(path)}&quot;)
+    print(f&quot;Path: {path}&quot;)
+    print(f&quot;Nodes expanded by A*: {expanded}&quot;)
+    straight = abs(goal[0]-start[0]) + abs(goal[1]-start[1])
+    print(f&quot;Manhattan lower bound: {straight} (path can&#x27;t be shorter)&quot;)
+    assert len(path) == 11, &quot;A* must return the optimal length&quot;
+    assert path[0] == start and path[-1] == goal
+    print(&quot;PASS: A* returned an optimal (shortest) path.&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    main()</code></pre>
+<p>Real output:</p>
+<pre><code>Grid 6x6, start=(0, 0) goal=(5, 5)
+Path length (nodes): 11
+Path: [(0, 0), (0, 1), (0, 2), (1, 2), (2, 2), (2, 3), (2, 4), (3, 4), (4, 4), (4, 5), (5, 5)]
+Nodes expanded by A*: 13
+Manhattan lower bound: 10 (path can&#x27;t be shorter)
+PASS: A* returned an optimal (shortest) path.</code></pre>
+<p><strong>What I understood from it:</strong> the heuristic is what buys the speed. A*</p>
+<p>expanded only 13 cells to find an optimal 11-node path; an uninformed BFS</p>
+<p>would have to touch every reachable open cell in its queue. The Manhattan</p>
+<p>bound of 10 confirms the path (11 nodes = 10 moves) is the shortest possible.</p>
+<p>The heuristic never overestimates, so A* is allowed to prune — that is the</p>
+<p>whole point of informed over uninformed search.</p>
+<p>---</p>
+<h2>Security #4 — XXE (CWE-611)</h2>
+<p><strong>What I learned about this topic — contained, sandbox only, no live targets:</strong></p>
+<p>XML can declare <strong>external entities</strong> that point at resources. If an app</p>
+<p>parses XML that includes user-controlled content and the parser resolves</p>
+<p>those <code>SYSTEM</code> references, an attacker can read arbitrary local files</p>
+<p>(<code>file:///etc/passwd</code>) or hit internal cloud endpoints. The classic shape:</p>
+<p>a <code>&lt;!DOCTYPE&gt;</code> that defines an entity whose value is read from disk, then</p>
+<p>referenced inside the document.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code># build_xml() — the exact payload shape, pointed at our OWN sandbox file
+return f&quot;&quot;&quot;&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;!DOCTYPE foo [&lt;!ENTITY xxe SYSTEM &quot;file://{fetch_target}&quot;&gt;]&gt;
+&lt;order&gt;
+  &lt;customer&gt;Acme Corp&lt;/customer&gt;
+  &lt;note&gt;&amp;xxe;&lt;/note&gt;
+&lt;/order&gt;&quot;&quot;&quot;</code></pre>
+<p><strong>What I understood about preventing it:</strong></p>
+<pre><code># SAFE: defusedxml refuses any DTD/entity before it can resolve.
+safe = defusedxml.ElementTree.fromstring(user_xml)  # raises EntitiesForbidden
+
+# UNSAFE: a parser told to follow external references leaks the file.
+parser = lxml.etree.XMLParser(load_dtd=True, resolve_entities=True, no_network=False)</code></pre>
+<p>Sandbox check (local only):</p>
+<pre><code>============================================================
+XXE demo (sandbox only) — file:// read of a local file
+============================================================
+
+[1] Attacker payload (the XML the server receives):
+&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;!DOCTYPE foo [&lt;!ENTITY xxe SYSTEM &quot;file:///tmp/day4/secret_server.txt&quot;&gt;]&gt;
+&lt;order&gt;
+  &lt;customer&gt;Acme Corp&lt;/customer&gt;
+  &lt;note&gt;&amp;xxe;&lt;/note&gt;
+&lt;/order&gt;
+
+[2] SAFE parse (defusedxml — blocks DTDs and entities by default):
+    BLOCKED: EntitiesForbidden: EntitiesForbidden(name=&#x27;xxe&#x27;, system_id=&#x27;file:///tmp/day4/secret_server.txt&#x27;, public_id=None)
+
+[3] VULNERABLE parser (expands the external entity):
+    lxml (resolve_entities=True) leaked &amp;xxe; -&gt; &#x27;db_password=Hunter2_local_only_demo\n&#x27;
+
+[4] Why it matters:
+    If the server had concatenated a user value into XML and used a
+    resolver that follows file:// SYSTEM refs, an attacker controlling
+    the &lt;note&gt; via a DTD could exfiltrate /etc/passwd or, on cloud
+    metadata endpoints (169.254.169.254), cloud credentials.
+
+[5] FIX — reject DTDs / use defusedxml (no entity expansion, safe default).
+    safe_xml = defusedxml.ElementTree.fromstring(user_xml)  # blocks DOCTYPE/entities</code></pre>
+<p><strong>What I understood:</strong> the same XML document is inert or dangerous depending</p>
+<p>entirely on the parser&#x27;s config. My own safe read (<code>secret_server.txt</code>, a</p>
+<p>file I created) was blocked by defusedxml but read clean by an lxml parser</p>
+<p>with <code>resolve_entities=True</code>. The fix is not &quot;sanitise the XML&quot; — it is to</p>
+<p>use a parser whose default refuses DTDs and entity expansion.</p>
+<p>---</p>
+<h2>Day 4 notes</h2>
+<ul><li>Concept #4: code ran, output above. ✔</li><li>Security #4: understood the idea, sandbox only. ✔</li><li>1596 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 004 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 007 — Finding groups with no labels · Matías Rathgeb</title>
+<meta name="description" content="Day 007 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 007 OF 1600 · 2026-09-13</p>
+    <h1>Day 007 — Finding groups with no labels</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-09-13 · <strong>Day:</strong> 7 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #7 — Clustering without labels: k-means</h2>
+<p>Days 5 and 6 were about <em>supervised</em> ideas: search that knows its goal,</p>
+<p>and a line that fits data I already labelled. Today is the opposite side</p>
+<p>of machine learning — <strong>unsupervised</strong> learning. I have points and **no</p>
+<p>labels at all**. Nobody tells me which point is which; I only have the</p>
+<p>coordinates.</p>
+<p>The question k-means asks is simple: *can I find a small number of</p>
+<p>&quot;centres&quot;, so that every point sits close to the centre it is assigned</p>
+<p>to?* The algorithm is a loop of two steps the course keeps returning to:</p>
+<p>1. <strong>Assign</strong> each point to the nearest centre (nearest by squared</p>
+<p>   distance).</p>
+<p>2. <strong>Update</strong> each centre to the mean of the points assigned to it.</p>
+<p>Then repeat until the centres stop moving. The number I want to watch is</p>
+<p>the <strong>inertia</strong> — the sum of squared distances from each point to its own</p>
+<p>centre. Every iteration can only lower it (or leave it), which is why the</p>
+<p>loop converges. The big practical lesson the course hammered: the</p>
+<p><strong>starting centres matter</strong>. If I seed all three centres in the same</p>
+<p>corner, a whole real group can get swallowed. So people use <em>k-means++</em></p>
+<p>seeding, which spreads the seeds out, weighted by squared distance.</p>
+<p><strong>What I tried today:</strong> 12 points that clearly form three groups (bottom</p>
+<p>left, top left, top right). I pretended not to know they were grouped,</p>
+<p>and clustered them with K=3 using k-means++ seeding and a fixed seed so</p>
+<p>the run is reproducible.</p>
+<pre><code>#!/usr/bin/env python3
+# kmeans.py — k-means clustering from scratch on 2D points.
+# MA01 (Machine Learning), unsupervised learning block.
+# Pure stdlib. Day 7 concept: clustering without labels.
+import math
+import random
+
+# 12 points, three obvious groups (we pretend we do not know them).
+POINTS = [
+    (1.0, 1.0), (1.5, 2.0), (2.0, 1.0), (1.2, 1.8),
+    (8.0, 8.0), (8.5, 9.0), (9.0, 8.2), (8.2, 8.8),
+    (1.0, 9.0), (1.6, 8.6), (2.2, 9.2), (1.4, 9.4),
+]
+K = 3
+
+def dist2(a, b):
+    return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2
+
+def mean(pts):
+    n = len(pts)
+    return (sum(p[0] for p in pts) / n, sum(p[1] for p in pts) / n)
+
+def kmeanspp(points, k, rng):
+    # k-means++ seeding: spread the first centroids out, weighted by
+    # squared distance so far-away points are likely to be chosen.
+    centroids = [points[rng.randrange(len(points))]]
+    while len(centroids) &lt; k:
+        d2 = [min(dist2(p, c) for c in centroids) for p in points]
+        total = sum(d2)
+        r = rng.random() * total
+        acc = 0.0
+        for p, w in zip(points, d2):
+            acc += w
+            if acc &gt;= r:
+                centroids.append(p)
+                break
+    return centroids
+
+def assign(points, centroids):
+    return [min(range(len(centroids)), key=lambda i: dist2(p, centroids[i]))
+            for p in points]
+
+def kmeans(points, k, iters=50):
+    rng = random.Random(7)          # fixed seed -&gt; reproducible run
+    centroids = kmeanspp(points, k, rng)
+    for it in range(1, iters + 1):
+        labels = assign(points, centroids)
+        newc = []
+        for i in range(k):
+            grp = [p for p, l in zip(points, labels) if l == i]
+            newc.append(mean(grp) if grp else centroids[i])
+        shift = sum(math.dist(a, b) for a, b in zip(centroids, newc))
+        centroids = newc
+        if shift &lt; 1e-9:
+            print(f&quot;converged after {it} iterations&quot;)
+            break
+    return assign(points, centroids), centroids
+
+if __name__ == &quot;__main__&quot;:
+    labels, cents = kmeans(POINTS, K)
+    for i, c in enumerate(cents):
+        mags = [p for p, l in zip(POINTS, labels) if l == i]
+        print(f&quot;cluster {i}: centroid=({c[0]:.2f}, {c[1]:.2f})  n={len(mags)}&quot;)
+    inertia = sum(dist2(p, cents[l]) for p, l in zip(POINTS, labels))
+    print(f&quot;inertia (sum of squared distances): {inertia:.3f}&quot;)</code></pre>
+<p>Real output (<code>python3 kmeans.py</code>, Python 3.11.15):</p>
+<pre><code>converged after 2 iterations
+cluster 0: centroid=(8.43, 8.50)  n=4
+cluster 1: centroid=(1.55, 9.05)  n=4
+cluster 2: centroid=(1.43, 1.45)  n=4
+inertia (sum of squared distances): 3.745</code></pre>
+<p><strong>What I understood from it:</strong> the algorithm never saw a single label,</p>
+<p>yet it recovered the three groups perfectly — <strong>4 points each</strong>, with</p>
+<p>centres sitting right inside each blob. It stopped after <strong>2 iterations</strong></p>
+<p>because the centres stopped moving. And I learned the seeding lesson the</p>
+<p>hard way: my first attempt seeded the three centres from the *first three</p>
+<p>points* (all in the bottom-left group), and the whole top-left group got</p>
+<p>merged into one giant cluster with an inertia of <strong>98.17</strong>. Switching to</p>
+<p>k-means++ seeding dropped the inertia to <strong>3.75</strong> — same algorithm, same</p>
+<p>data, different <strong>start</strong>. That is the real takeaway: k-means is only as</p>
+<p>good as where you start it, and &quot;converged&quot; does not automatically mean</p>
+<p>&quot;correct&quot;. It means the loop stopped, not that it found the best answer.</p>
+<p>---</p>
+<h2>Security #7 — Insecure deserialization (pickle, CWE-502)</h2>
+<p><strong>What I learned about this topic — contained, sandbox only, no live targets:</strong></p>
+<p>Serialization turns an object into bytes so it can be stored or sent;</p>
+<p><strong>deserialization</strong> turns those bytes back into an object. The danger is</p>
+<p>that some formats do not just rebuild <em>data</em> — they can be told to run</p>
+<p><strong>code</strong> while rebuilding. Python&#x27;s <code>pickle</code> is exactly that format. A</p>
+<p>pickle stream can name a callable and its arguments inside a special</p>
+<p>method (<code>__reduce__</code>), and <code>pickle.loads()</code> will call it <strong>at load time</strong>,</p>
+<p>before your code ever looks at the result.</p>
+<p>So if an app does <code>pickle.loads(user_input)</code> — a session cookie, a cache</p>
+<p>blob, an uploaded file, a message in a queue — then *whoever controls</p>
+<p>those bytes controls what runs on the server*. That is the whole bug of</p>
+<p>CWE-502. It is not a parsing crash; it is **remote code execution by</p>
+<p>design**.</p>
+<p>I built the payload <strong>in my own sandbox (/tmp)</strong> and pointed it at a</p>
+<p>marker file on my own disk — no network, no target, nothing real. The</p>
+<p>payload is deliberately boring: it just writes a one-line marker, which</p>
+<p>is enough to prove the code ran.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code>class ExecOnLoad:
+    def __reduce__(self):
+        # pickle will CALL this callable while rebuilding the object
+        return (os.system, (&quot;echo ... &gt; /tmp/day7/marker.txt&quot;,))
+
+# VULNERABLE: attacker-controlled bytes go straight into pickle.loads
+pickle.loads(blob)   # -&gt; os.system(...) runs</code></pre>
+<p><strong>What I understood about preventing it:</strong> the rule is blunt — **never</p>
+<p>unpickle data you did not create and trust**. Prefer a data-only format</p>
+<p>(JSON) that physically cannot carry a callable. If you must use pickle,</p>
+<p>sign the bytes with a key only the server knows (<code>hmac</code>) and verify the</p>
+<p>signature <em>before</em> loading, so tampered input is rejected up front.</p>
+<p>At the process level: sandbox the worker, and never feed a cache/session/</p>
+<p>queue payload straight into a loader.</p>
+<pre><code># SAFE: JSON carries data only — no callables, loading never runs code
+data = json.loads(raw)            # {&#x27;user&#x27;: &#x27;student&#x27;, &#x27;role&#x27;: &#x27;reader&#x27;}
+
+# if pickle is unavoidable: check integrity first
+if not hmac.compare_digest(mac, hmac.new(key, blob, hashlib.sha256).digest()):
+    raise ValueError(&quot;tampered payload&quot;)
+obj = pickle.loads(blob)          # only after the MAC is verified</code></pre>
+<p>Sandbox check (local only, /tmp, benign payload):</p>
+<pre><code>$ python3 pickle_deser.py
+serialized size: 107 bytes
+marker file created after loads(): True
+marker content: &#x27;code executed at unpickle time&#x27;
+json round-trip (data only, no code): {&#x27;user&#x27;: &#x27;student&#x27;, &#x27;role&#x27;: &#x27;reader&#x27;}</code></pre>
+<p><strong>What I understood:</strong> the marker file appeared <strong>before</strong> the script ever</p>
+<p>used the &quot;object&quot; — the write happened <em>during</em> <code>pickle.loads()</code>. 107</p>
+<p>bytes of data were enough to run a command. That is the difference between</p>
+<p>a <strong>data</strong> format and an <strong>object</strong> format: JSON moved my dictionary</p>
+<p>around and ran nothing, while pickle executed my callable on the way in.</p>
+<p>The fix is not a clever parser setting — it is refusing to deserialize</p>
+<p>untrusted input at all, and treating any bytes that came from outside the</p>
+<p>server as hostile until proven otherwise.</p>
+<p>---</p>
+<h2>Day 7 notes</h2>
+<ul><li>Concept #7: k-means ran, 3 groups recovered, inertia 98.17 → 3.75 with k-means++ seeding. ✔</li><li>Security #7: insecure deserialization understood, sandbox only (/tmp), no live targets. ✔</li><li>1593 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 007 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

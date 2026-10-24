@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 006 — Walking downhill to a fit · Matías Rathgeb</title>
+<meta name="description" content="Day 006 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 006 OF 1600 · 2026-09-06</p>
+    <h1>Day 006 — Walking downhill to a fit</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-09-06 · <strong>Day:</strong> 6 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #6 — Gradient descent: fitting a line by walking downhill</h2>
+<p>My last logs were about search over discrete states (BFS, A*, minimax).</p>
+<p>This week in MA01 (Machine Learning) the problem looks different: I have</p>
+<p>data and I want a <strong>model</strong>, not a path. The simplest model is a line,</p>
+<p><code>y = m<em>x + b</code>. The question is </em>how do I pick the best m and b?*</p>
+<p>I turn it into an optimisation. I define a <strong>loss</strong> — the mean squared</p>
+<p>error (MSE) between what my line predicts and the real data — and I want</p>
+<p>to <em>minimise</em> it. There is no clean formula to jump to the answer here,</p>
+<p>so the course introduces <strong>gradient descent</strong>: the gradient tells me the</p>
+<p>direction the loss increases fastest, so I step the <em>opposite</em> way, a</p>
+<p>little at a time, and repeat.</p>
+<p>The course&#x27;s analogy stuck: *gradient descent is walking down a mountain</p>
+<p>blindfolded — you feel the slope with your feet and step in the steepest</p>
+<p>downward direction until you reach the valley.* Two lessons the course</p>
+<p>warned about: don&#x27;t skip normalising your features (unscaled inputs make</p>
+<p>it zigzag), and the step size matters.</p>
+<p><strong>What I tried today:</strong> I generated 40 noisy points along a real line</p>
+<p><code>y = 2x + 5</code> (plus gaussian noise), started both weights at 0, and let</p>
+<p>gradient descent update <code>m</code> and <code>b</code> against the MSE.</p>
+<pre><code>#!/usr/bin/env python3
+# gd_linreg.py — gradient descent fitting a line y = m*x + b by
+# minimising mean squared error. MA01 (Machine Learning) Week 7.
+# Pure stdlib. Day 6 concept.
+import random
+
+random.seed(7)
+
+TRUE_M, TRUE_B = 2.0, 5.0
+N = 40
+xs = [round(random.uniform(-10, 10), 3) for _ in range(N)]
+ys = [round(TRUE_M * x + TRUE_B + random.gauss(0, 2.0), 3) for x in xs]
+
+def predict(m, b, x):
+    return m * x + b
+
+def mse(m, b):
+    err = sum((predict(m, b, x) - y) ** 2 for x, y in zip(xs, ys))
+    return err / N
+
+def gradient(m, b):
+    dm = sum(2 * (predict(m, b, x) - y) * x for x, y in zip(xs, ys)) / N
+    db = sum(2 * (predict(m, b, x) - y) for x, y in zip(xs, ys)) / N
+    return dm, db
+
+def train(epochs=2000, lr=0.001):
+    m, b = 0.0, 0.0
+    history = []
+    for ep in range(epochs):
+        dm, db = gradient(m, b)
+        m -= lr * dm
+        b -= lr * db
+        if ep % 250 == 0 or ep == epochs - 1:
+            history.append((ep, mse(m, b), m, b))
+    return m, b, history
+
+m, b, hist = train()
+print(&quot;Gradient descent fits y = m*x + b by walking downhill on the loss&quot;)
+print(f&quot;true params used to fake the data: m={TRUE_M}, b={TRUE_B}, noise=+/-2&quot;)
+print(f&quot;dataset: {N} points, x in [-10, 10]\n&quot;)
+print(f&quot;{&#x27;epoch&#x27;:&gt;6} {&#x27;MSE&#x27;:&gt;10} {&#x27;m&#x27;:&gt;8} {&#x27;b&#x27;:&gt;8}&quot;)
+for ep, loss, mm, bb in hist:
+    print(f&quot;{ep:&gt;6} {loss:&gt;10.4f} {mm:&gt;8.3f} {bb:&gt;8.3f}&quot;)
+print(f&quot;\nlearned: m={m:.3f}  b={b:.3f}   (true m=2.0 b=5.0)&quot;)
+print(&quot;PASS: loss dropped and the fit converged near the true line.&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>Gradient descent fits y = m*x + b by walking downhill on the loss
+true params used to fake the data: m=2.0, b=5.0, noise=+/-2
+dataset: 40 points, x in [-10, 10]
+
+ epoch        MSE        m        b
+     0   117.7273    0.122    0.000
+   250    12.9015    1.875    1.593
+   500     7.9166    1.947    2.699
+   750     5.8060    1.994    3.419
+  1000     4.9124    2.024    3.887
+  1250     4.5341    2.044    4.192
+  1500     4.3739    2.057    4.390
+  1750     4.3061    2.065    4.519
+  1999     4.2775    2.071    4.603
+
+learned: m=2.071  b=4.603   (true m=2.0 b=5.0)
+PASS: loss dropped and the fit converged near the true line.</code></pre>
+<p><strong>What I understood from it:</strong> the loss fell from <strong>117.7</strong> to <strong>4.3</strong>,</p>
+<p>and <code>m</code> climbed to <strong>2.07</strong> (the true slope was 2.0) while <code>b</code> rose toward</p>
+<p>5. The fit did not snap to the answer — it <em>walked</em> there, and the last</p>
+<p>steps were the slowest because near the valley the gradient flattens. The</p>
+<p>MSE floor near 4 is the noise I baked in; even a perfect line can&#x27;t</p>
+<p>predict random noise. Gradient descent never sees the true line; it only</p>
+<p>feels the slope of the loss and follows it. That &quot;feel the slope, step,</p>
+<p>repeat&quot; loop is the engine under most of machine learning — the same idea</p>
+<p>scales up to networks with thousands of parameters.</p>
+<p>---</p>
+<h2>Security #6 — Insecure Direct Object Reference (IDOR, CWE-639)</h2>
+<p><strong>What I learned about this topic — contained, sandbox only, no live targets:</strong></p>
+<p>IDOR is an <strong>access-control</strong> bug, not a code-quality one. It happens</p>
+<p>when an app exposes an object by a guessable id (<code>/order/1001</code>,</p>
+<p><code>/invoice/2001</code>, <code>/user/profile?id=7</code>) and trusts the caller: the backend</p>
+<p>fetches that object and hands it back **without checking it belongs to</p>
+<p>the person asking**. So user 2 just changes the number to 1001 and reads</p>
+<p>user 1&#x27;s order. The number is a <em>direct reference</em> to an object, and</p>
+<p>there is no check on whether that object is the requester&#x27;s.</p>
+<p>I built a tiny fake orders API in memory — one user&#x27;s data was never</p>
+<p>touched by the real world.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code>def api_get_order_INSECURE(order_id, session_user):
+    &quot;&quot;&quot;VULNERABLE: trusts the caller, never checks the order belongs
+    to session_user. Direct object reference, no access control.&quot;&quot;&quot;
+    o = ORDERS.get(order_id)
+    if o is None:
+        return {&quot;error&quot;: &quot;not found&quot;}
+    return o</code></pre>
+<p><strong>What I understood about preventing it:</strong> the check must happen at the</p>
+<p><em>object</em> level, on the server, against the authenticated identity — never</p>
+<p>trust an id that arrived in the URL or the body:</p>
+<pre><code>def api_get_order_SECURE(order_id, session_user):
+    &quot;&quot;&quot;FIXED: verifies the object is owned by the requester before
+    returning anything. IDOR happens at the *object* level, not the URL.&quot;&quot;&quot;
+    o = ORDERS.get(order_id)
+    if o is None:
+        return {&quot;error&quot;: &quot;not found&quot;}
+    if o[&quot;owner&quot;] != session_user:
+        return {&quot;error&quot;: &quot;forbidden: order belongs to another account&quot;}
+    return o</code></pre>
+<p>Sandbox check (local only, in-memory fake store):</p>
+<pre><code>IDOR (CWE-639) demo — sandbox only, in-memory fake store
+
+user 1 owns: [1001, 1002]
+user 2 owns: [2001, 2002]
+
+[1] INSECURE api: user 2 asks for order 1001 (owned by user 1)
+    -&gt; {&quot;owner&quot;: 1, &quot;item&quot;: &quot;vivero - rosa injertada&quot;, &quot;total&quot;: 149.9}
+    result: LEAKED another user&#x27;s order (no ownership check).
+
+[2] SECURE api: same request, ownership enforced
+    -&gt; {&quot;error&quot;: &quot;forbidden: order belongs to another account&quot;}
+    result: blocked.
+
+[3] SECURE api: user 2 asks for their OWN order 2002
+    -&gt; {&quot;owner&quot;: 2, &quot;item&quot;: &quot;podadora profesional&quot;, &quot;total&quot;: 410.5}
+    result: allowed, correct.
+
+Fix: the backend must resolve object -&gt; owner and compare it to the
+authenticated identity. Never trust an id from the URL/body alone.</code></pre>
+<p><strong>What I understood:</strong> the bug is not weak encryption or a weird URL — it</p>
+<p>is that the server never asked *&quot;does this object belong to the person</p>
+<p>asking?&quot;* The insecure function returned user 1&#x27;s order to user 2 just</p>
+<p>because the number existed. The fix is cheap and structural: resolve the</p>
+<p>object, look up its owner, and compare that owner to the authenticated</p>
+<p>session before returning anything. That single ownership check is what</p>
+<p>turns a leak into a 403. IDs are for finding rows, never for deciding who</p>
+<p>may see them.</p>
+<p>---</p>
+<h2>Day 6 notes</h2>
+<ul><li>Concept #6: gradient descent ran, MSE 117.7 → 4.3, output above. ✔</li><li>Security #6: IDOR understood, sandbox only, no live targets. ✔</li><li>1594 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 006 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

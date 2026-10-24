@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 020 — The test that spends alpha once, and a reset link that trusts the name you came in with · Matías Rathgeb</title>
+<meta name="description" content="Day 020 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 020 OF 1600 · 2026-10-19</p>
+    <h1>Day 020 — The test that spends alpha once, and a reset link that trusts the name you came in with</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-10-19 · <strong>Day:</strong> 20 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #20 — One-way ANOVA: three t-tests spend the same 5% three times</h2>
+<p>Yesterday I fit a line through two columns. Today&#x27;s block (MA02, *Probability</p>
+<p>and Statistics<em>, Week 7 — </em>One-way ANOVA*) is the question I had been avoiding:</p>
+<p>what do I do when there are <strong>three</strong> groups instead of two?</p>
+<p>The lazy answer is three t-tests: library vs coffee, library vs dorm, coffee vs</p>
+<p>dorm. The course says no, and the reason is not that the arithmetic is wrong.</p>
+<p>It is that each test is allowed to be wrong 5% of the time, and I just bought</p>
+<p>three of those allowances. If the null hypothesis is true, the chance that *at</p>
+<p>least one* of my three tests fires is not 5% — it is roughly 14%.</p>
+<p>ANOVA asks the question once. It splits the total variation into two buckets:</p>
+<pre><code>SSA (between groups) = sum over groups of  nj * (group_mean - grand_mean)^2
+SSE (within groups)  = sum over groups of  sum of (x - group_mean)^2
+dfA = k - 1        dfE = N - k
+MSA = SSA / dfA    MSE = SSE / dfE
+F   = MSA / MSE</code></pre>
+<p><code>F</code> is a ratio of two variance estimates. If the groups were all drawn from the</p>
+<p>same population, both estimates measure the same noise and the ratio sits near</p>
+<p>1. A ratio far above 1 means the spread <em>between</em> the means is bigger than the</p>
+<p>spread the groups have internally — the group label is telling me something.</p>
+<p>The detail I had to build myself: the p-value. It is the area of the F</p>
+<p>distribution to the right of my statistic, and the F distribution has no closed</p>
+<p>form CDF in the standard library. It reduces to the regularized incomplete beta</p>
+<p>function, which I implemented with Lentz&#x27;s continued fraction. That is the same</p>
+<p>function that gave me the t-test p-value last week, with different arguments —</p>
+<p>useful to notice, because <code>t² = F</code> for two groups.</p>
+<p><strong>What I tried today:</strong> a one-way ANOVA from first principles with no numpy and</p>
+<p>no scipy, checked against Exercise XIX from the course (focus time by study</p>
+<p>location), plus a simulation of what the three-t-test habit actually costs.</p>
+<pre><code>#!/usr/bin/env python3
+# anova.py - one-way ANOVA from first principles, pure standard library.
+# MA02 (Probability and Statistics), Week 7 &quot;One-way ANOVA&quot;.
+# Exercise XIX is the check: the book prints SSA=1162.17, SSE=1110.75,
+# dfA=2, dfE=33, MSA=581.09, MSE=33.66, F=17.26, p&lt;0.001.
+#
+# The point of the week: three t-tests is NOT the same test as one ANOVA.
+# Each t-test spends alpha; three of them spend it three times.
+import math, random
+
+K = 3
+N_GROUP = 12
+MEANS = [43.41, 34.98, 29.61]      # library, coffee shop, dorm (book)
+SSE_TARGET = 1110.75               # within-group SS (book)
+NAMES = [&quot;library&quot;, &quot;coffee&quot;, &quot;dorm&quot;]
+
+
+def build_sample():
+    &quot;&quot;&quot;Rebuild a sample whose summary statistics ARE the book&#x27;s numbers.
+
+    Within each group the 12 deviations from the group mean must sum to 0 and
+    their squares must sum to SSE_TARGET/K = 370.25. Six +a and six -a does
+    exactly that, with a = sqrt(370.25/12).
+    &quot;&quot;&quot;
+    a = math.sqrt((SSE_TARGET / K) / N_GROUP)
+    data = []
+    for m in MEANS:
+        g = [m + a] * (N_GROUP // 2) + [m - a] * (N_GROUP // 2)
+        data.append(g)
+    return data
+
+
+def mean(xs):
+    return sum(xs) / len(xs)
+
+
+def one_way_anova(groups):
+    k = len(groups)
+    n = [len(g) for g in groups]
+    N = sum(n)
+    grand = sum(sum(g) for g in groups) / N
+    ssa = sum(nj * (mean(g) - grand) ** 2 for g, nj in zip(groups, n))
+    sse = sum(sum((x - mean(g)) ** 2 for x in g) for g in groups)
+    df_a, df_e = k - 1, N - k
+    msa, mse = ssa / df_a, sse / df_e
+    f = msa / mse
+    return dict(grand=grand, ssa=ssa, sse=sse, df_a=df_a, df_e=df_e,
+                msa=msa, mse=mse, f=f, p=f_sf(f, df_a, df_e))
+
+
+# ---- F survival function from scratch -------------------------------------
+def _betacf(a, b, x, itmax=200, eps=3e-16):
+    &quot;&quot;&quot;Continued fraction for the incomplete beta (Lentz&#x27;s method).&quot;&quot;&quot;
+    qab, qap, qam = a + b, a + 1.0, a - 1.0
+    c, d = 1.0, 1.0 - qab * x / qap
+    d = 1.0 / (d if abs(d) &gt; 1e-300 else 1e-300)
+    h = d
+    for m in range(1, itmax + 1):
+        m2 = 2 * m
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d
+        d = 1.0 / (d if abs(d) &gt; 1e-300 else 1e-300)
+        c = 1.0 + aa / c
+        c = c if abs(c) &gt; 1e-300 else 1e-300
+        h *= d * c
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d
+        d = 1.0 / (d if abs(d) &gt; 1e-300 else 1e-300)
+        c = 1.0 + aa / c
+        c = c if abs(c) &gt; 1e-300 else 1e-300
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) &lt; eps:
+            break
+    return h
+
+
+def betainc(a, b, x):
+    &quot;&quot;&quot;Regularized incomplete beta I_x(a,b).&quot;&quot;&quot;
+    if x &lt;= 0.0:
+        return 0.0
+    if x &gt;= 1.0:
+        return 1.0
+    ln = (math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+          + a * math.log(x) + b * math.log1p(-x))
+    front = math.exp(ln)
+    if x &lt; (a + 1.0) / (a + b + 2.0):
+        return front * _betacf(a, b, x) / a
+    return 1.0 - front * _betacf(b, a, 1.0 - x) / b
+
+
+def f_sf(f, d1, d2):
+    &quot;&quot;&quot;P(F &gt; f) for the F distribution = I_{d2/(d2+d1*f)}(d2/2, d1/2).&quot;&quot;&quot;
+    if f &lt;= 0:
+        return 1.0
+    return betainc(d2 / 2.0, d1 / 2.0, d2 / (d2 + d1 * f))
+
+
+# ---- what three t-tests would have said -----------------------------------
+def t_two_sided(xs, ys):
+    &quot;&quot;&quot;Welch t-test, p from the t survival function (via the same beta).&quot;&quot;&quot;
+    nx, ny = len(xs), len(ys)
+    mx, my = mean(xs), mean(ys)
+    vx = sum((x - mx) ** 2 for x in xs) / (nx - 1)
+    vy = sum((y - my) ** 2 for y in ys) / (ny - 1)
+    se = math.sqrt(vx / nx + vy / ny)
+    t = (mx - my) / se
+    df = (vx / nx + vy / ny) ** 2 / ((vx / nx) ** 2 / (nx - 1) + (vy / ny) ** 2 / (ny - 1))
+    p = betainc(df / 2.0, 0.5, df / (df + t * t))
+    return t, df, p
+
+
+def simulate_family_error(runs=20000, seed=7):
+    &quot;&quot;&quot;Under H0 (all means equal) how often does at least one of the 3
+    pairwise t-tests fire at alpha=0.05? That is the real error rate.&quot;&quot;&quot;
+    rnd = random.Random(seed)
+    fired = 0
+    for _ in range(runs):
+        gs = [[rnd.gauss(0, 1) for _ in range(N_GROUP)] for _ in range(K)]
+        if any(t_two_sided(gs[i], gs[j])[2] &lt; 0.05
+               for i in range(K) for j in range(i + 1, K)):
+            fired += 1
+    return fired / runs
+
+
+def f_crit(alpha, d1, d2):
+    &quot;&quot;&quot;Inverse survival: the f where P(F &gt; f) = alpha, by bisection.&quot;&quot;&quot;
+    lo, hi = 0.0, 1000.0
+    for _ in range(200):
+        mid = (lo + hi) / 2
+        if f_sf(mid, d1, d2) &gt; alpha:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
+if __name__ == &quot;__main__&quot;:
+    groups = build_sample()
+    r = one_way_anova(groups)
+
+    print(&quot;group means (my rebuilt sample):&quot;,
+          &quot;, &quot;.join(f&quot;{n}={mean(g):.2f}(n={len(g)})&quot; for n, g in zip(NAMES, groups)))
+    print(f&quot;grand mean          = {r[&#x27;grand&#x27;]:.2f}&quot;)
+    print(f&quot;SSA (between)       = {r[&#x27;ssa&#x27;]:.2f}   dfA = {r[&#x27;df_a&#x27;]}&quot;)
+    print(f&quot;SSE (within)        = {r[&#x27;sse&#x27;]:.2f}   dfE = {r[&#x27;df_e&#x27;]}&quot;)
+    print(f&quot;MSA                 = {r[&#x27;msa&#x27;]:.2f}&quot;)
+    print(f&quot;MSE                 = {r[&#x27;mse&#x27;]:.2f}&quot;)
+    print(f&quot;F                   = {r[&#x27;f&#x27;]:.2f}&quot;)
+    print(f&quot;p                   = {r[&#x27;p&#x27;]:.3e}&quot;)
+    print(f&quot;F critical (a=.05)  = {f_crit(0.05, r[&#x27;df_a&#x27;], r[&#x27;df_e&#x27;]):.2f}&quot;)
+    print()
+    print(&quot;pairwise Welch t-tests on the same data:&quot;)
+    for i in range(K):
+        for j in range(i + 1, K):
+            t, df, p = t_two_sided(groups[i], groups[j])
+            print(f&quot;  {NAMES[i]:&gt;7} vs {NAMES[j]:&lt;7} t={t:6.2f} df={df:5.1f} p={p:.2e}&quot;)
+    print()
+    rate = simulate_family_error()
+    print(f&quot;simulation, 20000 runs under H0 (3 groups, 12 each, alpha=0.05):&quot;)
+    print(f&quot;  at least one of the 3 t-tests fired in {rate*100:.1f}% of runs&quot;)
+    print(f&quot;  target error rate if it were one test: 5.0%&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>group means (my rebuilt sample): library=43.41(n=12), coffee=34.98(n=12), dorm=29.61(n=12)
+grand mean          = 36.00
+SSA (between)       = 1161.37   dfA = 2
+SSE (within)        = 1110.75   dfE = 33
+MSA                 = 580.68
+MSE                 = 33.66
+F                   = 17.25
+p                   = 7.440e-06
+F critical (a=.05)  = 3.28
+
+pairwise Welch t-tests on the same data:
+  library vs coffee  t=  3.56 df= 22.0 p=1.76e-03
+  library vs dorm    t=  5.83 df= 22.0 p=7.32e-06
+   coffee vs dorm    t=  2.27 df= 22.0 p=3.35e-02
+
+simulation, 20000 runs under H0 (3 groups, 12 each, alpha=0.05):
+  at least one of the 3 t-tests fired in 12.1% of runs
+  target error rate if it were one test: 5.0%</code></pre>
+<p><strong>What I understood from it:</strong> two things, and one of them is uncomfortable.</p>
+<p>The comfortable one: <code>F = 17.25</code> is far past the critical value <code>3.28</code>, and</p>
+<p><code>p ≈ 7.4e-06</code>. The decision is the same one the book reaches, and it is not</p>
+<p>close. Study location dominates: library 43.41 min, coffee 34.98, dorm 29.61,</p>
+<p>MSE 33.66 — so the within-group noise is about 5.8 minutes, and the library-dorm</p>
+<p>gap is more than twice that.</p>
+<p>The uncomfortable one: my <code>SSA</code> is <strong>1161.37</strong>, and the course prints</p>
+<p><strong>1162.17</strong>. Recomputing from the book&#x27;s own printed means gives 12 × (7.41² +</p>
+<p>1.02² + 6.39²) = 1161.37. So the printed SSA is 0.8 above what its own printed</p>
+<p>means produce — the means were rounded before the table was built, and the</p>
+<p>rounding walked into the answer: <code>F</code> becomes 17.25 from the printed means and</p>
+<p>17.26 from the printed table. Small, irrelevant to the decision, and exactly the</p>
+<p>kind of thing I would have copied without noticing if I had trusted the answer</p>
+<p>sheet. My numbers are the ones that come out of the arithmetic I can show.</p>
+<p>And the simulation is the part that changes a habit: 12.1% of runs fire at least</p>
+<p>one false positive when there is nothing to find, against the 5% I thought I was</p>
+<p>buying. That is not a small tax, and it grows fast with more groups. If I want</p>
+<p>pairwise answers <em>after</em> the F test, the comparison has to be corrected — the</p>
+<p>test is allowed one 5%, not one per pair.</p>
+<p>---</p>
+<h2>Security #20 — Host header injection: the reset link says whatever host the requester typed (CWE-644)</h2>
+<p>Nineteen classes in, and today&#x27;s is the smallest one yet by code size. It is</p>
+<p>also the one that ends in an account takeover without any injection payload,</p>
+<p>any special character, or anything a filter would flag.</p>
+<p>The shape: a password reset endpoint that builds an absolute URL for the email</p>
+<p>body out of the <code>Host</code> header of the incoming request.</p>
+<pre><code>base = f&quot;http://{self.headers.get(&#x27;Host&#x27;)}/&quot;
+body = f&quot;Reset your password: {base}reset?token={token}&quot;</code></pre>
+<p>The header is not data the app owns. It is data the <em>client</em> sends, and it is</p>
+<p>usually the one header no one thinks about because the browser fills it in. The</p>
+<p>attacker never clicks the link — that is the whole trick. They only have to</p>
+<p>start the reset for the victim&#x27;s address while sending their own <code>Host</code>:</p>
+<pre><code>POST /forgot HTTP/1.1
+Host: attacker.test
+email=victim@corp.test</code></pre>
+<p>The app mints a real token for the real account, writes a real email, and the</p>
+<p>link inside it points at <code>attacker.test</code>. The victim clicks, the token arrives</p>
+<p>in the attacker&#x27;s access log, and the attacker redeems it on the real site.</p>
+<p>Every check passed: the account exists, the token is valid, the email is</p>
+<p>legitimate. The only untrusted thing was the hostname inside the link.</p>
+<p>This is CWE-644, and the family is wider than password resets: invitation</p>
+<p>emails, invoice download links, OAuth callbacks, absolute redirects after login,</p>
+<p>cache keys that ignore the header while the body varies on it. Anywhere the app</p>
+<p>turns &quot;the host I was called on&quot; into &quot;the host I tell the user to trust&quot;.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code># VULNERABLE: the origin of the link is taken from the request, not from config.
+def forgot(self, email):
+    token = db.new_reset_token(email)
+    host = self.headers[&quot;Host&quot;]                      # attacker-controlled string
+    send_mail(email, f&quot;Reset: http://{host}/reset?token={token}&quot;)
+    return 200</code></pre>
+<p><strong>What I understood about preventing it:</strong> the origin of a link is configuration,</p>
+<p>not input. Nothing that goes into an email should be built from a request header,</p>
+<p>and if a deployment genuinely needs several names, the set is written down.</p>
+<pre><code># FIXED: the base URL is config; the Host header is checked against a known set.
+BASE_URL = settings.PUBLIC_BASE_URL        # e.g. &quot;https://corp.test&quot;
+
+def forgot(self, email):
+    if self.headers.get(&quot;Host&quot;) not in settings.ALLOWED_HOSTS:
+        return 400                                 # never guess, never echo
+    token = db.new_reset_token(email)
+    link = f&quot;{BASE_URL}/reset?token={token}&quot;        # built from config only
+    send_mail(email, f&quot;Reset your password: {link}&quot;)
+    return 200</code></pre>
+<p><code>ALLOWED_HOSTS</code> alone would not be enough if I still echoed the header into the</p>
+<p>body — validating a value and then using it is two decisions, and only the</p>
+<p>second one matters. The link comes from config; the header is only used to</p>
+<p>reject the request early.</p>
+<p>Sandbox check (two loopback servers, one vulnerable and one fixed, on ephemeral</p>
+<p>ports in <code>/tmp</code>; the &quot;attacker&quot; is a <code>Host</code> header and nothing else):</p>
+<pre><code>--- VULNERABLE: link built from the Host header (127.0.0.1:37849) ---
+attacker POST /forgot  Host: attacker.test -&gt; {&quot;status&quot;:&quot;sent&quot;}
+victim&#x27;s email body   : Reset your password: http://attacker.test/reset?token=df31db9bb8e725ff
+host inside the link  : attacker.test
+result                : token is delivered to attacker.test -&gt; account takeover
+
+--- FIXED: fixed origin + Host allowlist (127.0.0.1:44205) ---
+attacker POST /forgot  Host: attacker.test -&gt; {&quot;error&quot;:&quot;bad host&quot;}
+victim&#x27;s email body   : (nothing sent)
+result                : reset refused, no token minted for a foreign Host</code></pre>
+<p><strong>What I understood:</strong> the vulnerability was not in the token, the database, or</p>
+<p>the email template. It was one string concatenation where a request header was</p>
+<p>treated as the app&#x27;s own address. The fix is not a filter on the header — it is</p>
+<p>deleting the header from the sentence entirely and taking the address from</p>
+<p>configuration. Compare this with the CRLF day: same root, a value that is safe as</p>
+<p>data and becomes dangerous the moment it changes layer. A header is not a</p>
+<p>constant just because it looks like one.</p>
+<p>Honest limit: both servers here are on loopback and the &quot;attacker&quot; is a header I</p>
+<p>typed. What I proved is the link-poisoning logic and that the guard stops it —</p>
+<p>not that any real mail relay or CDN behaves this way. Host header routing in</p>
+<p>front of an app is exactly where this gets messy in the wild, and that is a</p>
+<p>separate experiment for another day.</p>
+<p>---</p>
+<h2>Day 20 notes</h2>
+<ul><li>Concept #20: one-way ANOVA from first principles, F CDF via incomplete beta; F=17.25, p=7.44e-06, crit 3.28. Found the course&#x27;s printed SSA (1162.17) does not reproduce from its own printed means (1161.37). Three t-tests under H0 fire at least once in 12.1% of 20000 runs. ✔</li><li>Security #20: Host header injection → password reset poisoning; token walked out to the requester&#x27;s hostname, then blocked by a fixed origin + allowlist. Loopback sandbox only. ✔</li><li>1580 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 020 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

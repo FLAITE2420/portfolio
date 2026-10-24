@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 014 — The model that never trains, it just remembers · Matías Rathgeb</title>
+<meta name="description" content="Day 014 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 014 OF 1600 · 2026-10-01</p>
+    <h1>Day 014 — The model that never trains, it just remembers</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-10-01 · <strong>Day:</strong> 14 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #14 — k-Nearest Neighbours: no training step, just remember and vote</h2>
+<p>For the last ten days every model I wrote had a <strong>training</strong> phase. Gradient</p>
+<p>descent, decision trees, boosting, SVM — they all read the data once, do some</p>
+<p>heavy arithmetic, and then keep only a small bundle of numbers (weights,</p>
+<p>thresholds, support vectors). The data itself is thrown away. Today&#x27;s model</p>
+<p>does the exact opposite, and that is the whole point of the family it belongs</p>
+<p>to: <strong>k-Nearest Neighbours (k-NN) is a lazy learner</strong>.</p>
+<p>k-NN does not learn anything. It <strong>stores every training point</strong> and does no</p>
+<p>arithmetic at all until you ask it for a prediction. When a new point arrives,</p>
+<p>it measures the distance from that point to <em>every</em> remembered point, sorts</p>
+<p>them, takes the <strong>k closest</strong>, and lets them vote: the majority label wins.</p>
+<p>That is the entire algorithm.</p>
+<p>The consequence is the interesting part, and it is a real trade-off, not a</p>
+<p>footnote. Training is instant (just keep the rows). Prediction is expensive</p>
+<p>(every single query scans the whole training set). A model like logistic</p>
+<p>regression flips that: it pays a lot up front so every later prediction is</p>
+<p>cheap. Which one is &quot;better&quot; depends entirely on **how often you predict</p>
+<p>versus how often you retrain** — a question about the deployment, not about</p>
+<p>the math.</p>
+<p>It also explains the two knobs. <strong>k</strong> decides how many neighbours vote: k=1</p>
+<p>means &quot;copy the nearest label&quot;, which is flexible but jumps around if one</p>
+<p>training point is noisy; a large k smooths the vote out but starts blurring</p>
+<p>the boundary between the classes. And <strong>distance</strong> has to mean something: I</p>
+<p>normalise features before using k-NN, because otherwise a column measured in</p>
+<p>thousands would drown out a column measured in fractions.</p>
+<p><strong>What I tried today:</strong> I wrote k-NN from scratch with only the standard</p>
+<p>library — no numpy. I built two clouds of points that clearly belong to two</p>
+<p>classes, kept a separate <strong>test</strong> set the model never saw, and then measured</p>
+<p>accuracy for several values of k. The honest thing to watch is that k=1 scores</p>
+<p>a perfect <strong>1.000 on the training data</strong> — it is memorising — but it is the</p>
+<p>test column that actually tells me whether the model is any good.</p>
+<pre><code>#!/usr/bin/env python3
+# knn_stdlib.py - k-nearest neighbours by hand, pure standard library.
+# MA01 (Machine Learning) - the &quot;lazy learner&quot;: no training phase at all.
+#
+# Most models I studied so far (gradient descent, trees, SVM) had a TRAINING
+# step that does the hard work once and then throws the data away. k-NN does
+# the opposite: it remembers every training point and does the work at
+# prediction time -- look at the k closest remembered points and take a vote.
+import math, random
+
+
+def make_data(seed, n):
+    rnd = random.Random(seed)
+    rows = []
+    for _ in range(n):
+        if rnd.random() &lt; 0.5:
+            rows.append((rnd.gauss(0.0, 1.0), rnd.gauss(0.0, 1.0), 0))   # class 0
+        else:
+            rows.append((rnd.gauss(3.5, 1.0), rnd.gauss(3.5, 1.0), 1))   # class 1
+    return rows
+
+
+def dist(a, b):
+    return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
+def knn_predict(train, point, k):
+    # sort remembered points by distance, keep the k closest, majority vote
+    ordered = sorted(train, key=lambda r: dist(r, point))
+    votes = {}
+    for r in ordered[:k]:
+        votes[r[2]] = votes.get(r[2], 0) + 1
+    # deterministic tie-break: highest count, then smallest label
+    return max(votes.items(), key=lambda kv: (kv[1], -kv[0]))[0]
+
+
+def accuracy(train, test, k):
+    right = sum(1 for r in test if knn_predict(train, r, k) == r[2])
+    return right / len(test)
+
+
+def test_knn():
+    # sanity: a point sitting on class-0 training data must come back 0
+    train = [(0.0, 0.0, 0), (10.0, 10.0, 1)]
+    assert knn_predict(train, (0.1, 0.1), 1) == 0
+    assert knn_predict(train, (9.9, 9.9), 1) == 1
+    # k must not exceed the number of training points in a real run
+    assert accuracy(train, train, 1) == 1.0
+    print(&quot;self-test: ok&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    test_knn()
+    train = make_data(seed=1, n=200)
+    test = make_data(seed=99, n=100)      # data the model never saw
+    print(&quot;k   train_acc   test_acc&quot;)
+    for k in (1, 3, 5, 15, 51):
+        print(f&quot;{k:&lt;3} {accuracy(train, train, k):.3f}      {accuracy(train, test, k):.3f}&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>self-test: ok
+k   train_acc   test_acc
+1   1.000      0.980
+3   0.995      0.990
+5   1.000      0.990
+15  1.000      0.980
+51  1.000      0.980</code></pre>
+<p><strong>What I understood from it:</strong> the training column is a lie I have to stop</p>
+<p>trusting. k=1 gets <strong>1.000 on the data it memorised</strong> and only 0.980 on data it</p>
+<p>never saw — it is not learning a rule, it is repeating the answer key. The</p>
+<p>test column is what actually moved (0.980 → 0.990) when I let more neighbours</p>
+<p>vote. A model is judged on the data it did not see; everything else is</p>
+<p>recitation.</p>
+<p>---</p>
+<h2>Security #14 — Zip Slip: an archive entry whose <em>name</em> writes outside the folder (CWE-29)</h2>
+<p>Path traversal (my Day 1) was about a <em>request</em> asking for a file outside the</p>
+<p>web root. Today&#x27;s bug is the same idea wearing a different coat: the attacker</p>
+<p>never sends a path — they send an <strong>archive</strong>, and the harm happens when the</p>
+<p>server <em>unpacks</em> it. This is <strong>Zip Slip</strong>.</p>
+<p>The mechanism is almost insultingly simple. An archive is just a list of</p>
+<p>entries, and each entry carries a <strong>name</strong>. A malicious archive names one entry</p>
+<p><code>../something.txt</code> instead of <code>something.txt</code>. The extractor&#x27;s code then joins</p>
+<p>that name onto the destination folder — something like</p>
+<p><code>os.path.join(dest, name)</code> — and <code>..</code> walks <strong>up and out</strong> of the folder the</p>
+<p>developer meant to write into. If the process runs as root, or the webroot is a</p>
+<p>few levels up, the file lands somewhere it can be served or executed. No</p>
+<p>traversal in the URL, no odd characters — just a normal-looking unzip that</p>
+<p>writes an attacker-chosen file to an attacker-chosen place.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code># VULNERABLE: the member name is trusted and joined straight onto dest
+target = os.path.join(dest, name)     # name == &quot;../pwned.txt&quot; escapes dest
+with open(target, &quot;wb&quot;) as f:
+    f.write(z.read(name))</code></pre>
+<p><strong>What I understood about preventing it:</strong> the fix is not to block the string</p>
+<p><code>..</code> — that is a blocklist and blocklists lose to a new encoding. The fix is to</p>
+<p><strong>resolve the real path and prove it is still inside the destination</strong> before</p>
+<p>writing anything:</p>
+<pre><code># FIXED: resolve first, then refuse anything that lands outside dest
+real_dest = os.path.realpath(dest) + os.sep
+target = os.path.realpath(os.path.join(dest, name))
+if not target.startswith(real_dest):
+    continue          # climbs out of the folder -&gt; skip it</code></pre>
+<p>Sandbox check (local only, everything under /tmp):</p>
+<pre><code>[vulnerable extractor]
+  wrote: /tmp/day14/zipslip/unpacked/innocent.txt
+  wrote: /tmp/day14/zipslip/unpacked/../pwned.txt
+  did a file land outside DEST? True
+  -&gt; I was written OUTSIDE the target folder
+[fixed extractor]
+  wrote: /tmp/day14/zipslip/unpacked/innocent.txt
+  BLOCKED: ../pwned.txt
+  did a file land outside DEST? False</code></pre>
+<p><strong>What I understood:</strong> the dangerous part of this bug is <em>where it lives</em> — not</p>
+<p>in the code that receives user input, but in a utility the developer thinks is</p>
+<p>&quot;just unpacking a file&quot;. The lesson I keep re-learning: any place where</p>
+<p>attacker-controlled text becomes a <strong>filesystem path</strong> is a place that needs a</p>
+<p>resolve-and-contain check, and the only reliable check is comparing the resolved</p>
+<p>real path against the intended root, not pattern-matching the bad strings.</p>
+<p>---</p>
+<h2>Day 14 notes</h2>
+<ul><li>Concept #14: k-NN code ran, output above (train vs test accuracy shown). ✔</li><li>Security #14: Zip Slip reproduced, then blocked, in a /tmp sandbox only. ✔</li><li>1586 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 014 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

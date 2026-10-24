@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 016 — The score that changed every time I reshuffled the rows · Matías Rathgeb</title>
+<meta name="description" content="Day 016 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 016 OF 1600 · 2026-10-09</p>
+    <h1>Day 016 — The score that changed every time I reshuffled the rows</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-10-09 · <strong>Day:</strong> 16 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #16 — k-fold cross-validation: one split is a coin flip, k folds are a measurement</h2>
+<p>Yesterday the lesson was that a single accuracy number can lie. Today is the</p>
+<p>companion problem: even when the metric is right, the <em>way I split the data</em></p>
+<p>can make the number move. I had been testing every model with one holdout —</p>
+<p>cut off 30% of the rows, score on them, done. The cut is random, so a different</p>
+<p>shuffle gives a different score, and I never knew how much of the score was the</p>
+<p>model and how much was the luck of the split.</p>
+<p>The MA01 material (mock test, <em>Metrics, performance and validation</em>, Q1) asks</p>
+<p>exactly this: when you only have <strong>a limited amount of data</strong>, what validation</p>
+<p>method do you recommend? The answer it gives is **cross-validation with many</p>
+<p>folds** — with little data, the extra compute is not a problem, and</p>
+<p>cross-validation gives the most detailed validation information.</p>
+<p>The idea is simple once it clicks. Instead of spending a chunk of the data on</p>
+<p>testing and throwing it away, cut the data into <strong>k equal folds</strong>. Train on</p>
+<p>k−1 of them, test on the one fold left out, and repeat so that **every fold is</p>
+<p>the test set exactly once**. Then average the k scores. No row is wasted, and</p>
+<p>no single lucky shuffle decides the verdict. The spread of the fold scores also</p>
+<p>tells me something a single number never did: how stable the estimate is. When</p>
+<p>data is truly tiny, k can be the number of rows itself (leave-one-out).</p>
+<p><strong>What I tried today:</strong> rather than trust the idea, I measured it. I built the</p>
+<p>same overlapping two-class dataset and the same 1-nearest-neighbour classifier,</p>
+<p>then compared two estimators over ten different shuffles: a single 70/30 holdout</p>
+<p>versus 5-fold cross-validation. Standard library only, no ML libraries.</p>
+<pre><code>#!/usr/bin/env python3
+# cross_validation.py - one split is a coin flip; k-fold is a measurement.
+# MA01 (Machine Learning) - Week: metrics, performance and validation.
+# Mock-test Q1: &quot;What validation method would you recommend when only a
+# limited amount of data is available?&quot; -&gt; cross-validation with many folds.
+import random
+import math
+
+
+def make_data(seed, n=200):
+    # two overlapping classes on one feature; a classifier CAN separate them
+    # but not perfectly, so the accuracy estimate has real uncertainty.
+    rnd = random.Random(seed)
+    rows = []
+    for _ in range(n):
+        y = 1 if rnd.random() &lt; 0.5 else 0
+        x = rnd.gauss(1.0 if y == 1 else 0.0, 1.0)
+        rows.append((x, y))
+    return rows
+
+
+def knn1_predict(train, x):
+    # 1-nearest neighbour on a single feature
+    best = min(train, key=lambda r: abs(r[0] - x))
+    return best[1]
+
+
+def accuracy(train, test):
+    if not test:
+        return 0.0
+    return sum(1 for x, y in test if knn1_predict(train, x) == y) / len(test)
+
+
+def holdout_estimate(rows, frac, seed):
+    # split once, test on the held-out part, throw that part away forever
+    rnd = random.Random(seed)
+    idx = list(range(len(rows)))
+    rnd.shuffle(idx)
+    k = int(len(rows) * frac)
+    test = [rows[i] for i in idx[:k]]
+    train = [rows[i] for i in idx[k:]]
+    return accuracy(train, test)
+
+
+def kfold_scores(rows, k, seed):
+    rnd = random.Random(seed)
+    idx = list(range(len(rows)))
+    rnd.shuffle(idx)
+    folds = [idx[i::k] for i in range(k)]   # deal rows round-robin into k folds
+    scores = []
+    for i in range(k):
+        test = [rows[j] for j in folds[i]]
+        train = [rows[j] for f in range(k) if f != i for j in folds[f]]
+        scores.append(accuracy(train, test))
+    return scores
+
+
+def cv_estimate(rows, k, seed):
+    s = kfold_scores(rows, k, seed)
+    return sum(s) / len(s)
+
+
+def mean_std(vals):
+    m = sum(vals) / len(vals)
+    sd = math.sqrt(sum((v - m) ** 2 for v in vals) / len(vals))
+    return m, sd
+
+
+def test_cv():
+    # deterministic tiny case: perfectly separable, 1-NN must score 1.0
+    train = [(0.0, 0), (1.0, 1)]
+    assert knn1_predict(train, 0.1) == 0
+    assert knn1_predict(train, 0.9) == 1
+    assert accuracy(train, [(0.2, 0), (0.8, 1)]) == 1.0
+    print(&quot;self-test: ok&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>self-test: ok
+data: 200 rows, two overlapping classes (so accuracy has real noise)
+
+single 70/30 holdout, ten different shuffles:
+  shuffle seed=0  holdout acc=0.683
+  shuffle seed=1  holdout acc=0.683
+  shuffle seed=2  holdout acc=0.600
+  shuffle seed=3  holdout acc=0.600
+  shuffle seed=4  holdout acc=0.667
+  shuffle seed=5  holdout acc=0.733
+  shuffle seed=6  holdout acc=0.783
+  shuffle seed=7  holdout acc=0.650
+  shuffle seed=8  holdout acc=0.650
+  shuffle seed=9  holdout acc=0.667
+  -&gt; estimate jumps around: mean=0.672  std=0.053  min=0.600  max=0.783
+
+5-fold cross-validation, ten different shuffles (mean of folds):
+  shuffle seed=0  cv acc=0.685
+  shuffle seed=1  cv acc=0.660
+  shuffle seed=2  cv acc=0.655
+  shuffle seed=3  cv acc=0.670
+  shuffle seed=4  cv acc=0.670
+  shuffle seed=5  cv acc=0.690
+  shuffle seed=6  cv acc=0.675
+  shuffle seed=7  cv acc=0.625
+  shuffle seed=8  cv acc=0.650
+  shuffle seed=9  cv acc=0.665
+  -&gt; estimate holds still: mean=0.665  std=0.018  min=0.625  max=0.690
+
+one 5-fold run, fold by fold (seed=1):
+  fold 0: acc=0.600
+  fold 1: acc=0.650
+  fold 2: acc=0.725
+  fold 3: acc=0.625
+  fold 4: acc=0.700</code></pre>
+<p><strong>What I understood from it:</strong> the same model, the same data, and the holdout</p>
+<p>number still swam between <strong>0.600 and 0.783</strong> just from reshuffling — a spread</p>
+<p>of nearly 0.18 with a standard deviation of 0.053. Cross-validation over the</p>
+<p>same ten shuffles stayed between <strong>0.625 and 0.690</strong>, a standard deviation of</p>
+<p><strong>0.018</strong>, roughly a third as wide. The mean was almost the same (0.672 vs</p>
+<p>0.665), which is the point: cross-validation did not make the model better, it</p>
+<p>made the <em>estimate</em> cheaper to trust. A single split can report a number that</p>
+<p>is mostly luck. And the per-fold scores (0.600 … 0.725) are useful too — that</p>
+<p>scatter is the honest uncertainty of a 200-row dataset, which one number hides.</p>
+<p>The course was right about the trade-off: folds cost more compute to buy a</p>
+<p>steadier measurement, and when data is scarce, steadiness is worth more than</p>
+<p>time.</p>
+<p>---</p>
+<h2>Security #16 — NoSQL operator injection: a login that trusts the <em>type</em> of the input (CWE-943)</h2>
+<p>Every earlier bug today smuggled something inside a value — a path segment, a</p>
+<p>query string, a template, a field the form never showed. This one does not put</p>
+<p>anything <em>inside</em> a value. It <strong>changes the type</strong> of the value, and the query</p>
+<p>layer obeys it.</p>
+<p>The setting is a login that looks up a user by a filter document, the way</p>
+<p>document databases take queries: <code>{&quot;username&quot;: &quot;alice&quot;, &quot;password&quot;: &quot;hunter2&quot;}</code>.</p>
+<p>Ordinarily each field maps to a string and means &quot;equals this&quot;. But that filter</p>
+<p>usually arrives as <strong>JSON</strong>, and JSON lets a field hold an <em>object</em> instead of a</p>
+<p>string. So the attacker sends:</p>
+<pre><code>{&quot;username&quot;: &quot;admin&quot;, &quot;password&quot;: {&quot;$ne&quot;: null}}</code></pre>
+<p>Read as an operator, <code>{&quot;$ne&quot;: null}</code> does not mean &quot;the password is the text</p>
+<p><code>$ne: null</code>&quot;. It means <strong>&quot;the password is not null&quot;</strong> — and every account with a</p>
+<p>password satisfies that. The attacker never learns or guesses the admin password;</p>
+<p>they replace the equality test with a condition they control. <code>{&quot;$gt&quot;: &quot;&quot;}</code></p>
+<p>works the same way (&quot;password is greater than the empty string&quot;). SQL injection</p>
+<p>needs a string, a quote and a comment; this needs nothing but shipping a dict</p>
+<p>where a string was expected.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code># VULNERABLE: the query layer evaluates a dict value as an operator.
+# {&quot;password&quot;: {&quot;$ne&quot;: null}} becomes &quot;password != null&quot; -&gt; matches every user.
+users = db.find(request_body)      # attacker controls the types in request_body</code></pre>
+<p><strong>What I understood about preventing it:</strong> the fix is not to strip a list of</p>
+<p>known operators — that is a blocklist and the next operator name defeats it. The</p>
+<p>fix is to state what each field is allowed to be, and reject anything that is</p>
+<p>not that <strong>type</strong>. A password is a string; if the value is not a string, it never</p>
+<p>reaches the query.</p>
+<pre><code># FIXED: pin the allowed fields and require the exact type each one expects.
+if field not in ALLOWED: return False
+if not isinstance(value, str): return False    # a dict/operator can never pass</code></pre>
+<p>Sandbox check (local only, in-memory list, no network, no real database, no real</p>
+<p>credentials):</p>
+<pre><code>self-test: ok
+
+honest login  alice / hunter2
+  vulnerable: [&#x27;alice&#x27;]
+  fixed:      [&#x27;alice&#x27;]
+honest login  admin / wrong
+  vulnerable: []
+  fixed:      []
+
+attack login  admin / {&quot;$ne&quot;: null}
+  vulnerable: [&#x27;admin&#x27;]   &lt;- bypass, password never guessed
+  fixed:      []
+attack login  admin / {&quot;$gt&quot;: &quot;&quot;}
+  vulnerable: [&#x27;admin&#x27;]   &lt;- bypass again
+  fixed:      []</code></pre>
+<p><strong>What I understood:</strong> the honest logins behave identically in both versions —</p>
+<p>that is the whole trap. The code &quot;works&quot; on every test a developer writes,</p>
+<p>because a developer tests with strings. The difference only appears when the</p>
+<p>attacker changes the type of a field, and the vulnerable version logs in as</p>
+<p><strong>admin</strong> without ever knowing the password. It is the same shape as the</p>
+<p>injection bugs I studied before, moved up a layer: the danger is not a bad</p>
+<p>character inside the input, it is the <em>structure</em> of the input being taken as</p>
+<p>instructions. Any query built from a request body has to fix the type of each</p>
+<p>field before it is trusted — the client chooses the shape, so the shape cannot</p>
+<p>be the query.</p>
+<p>---</p>
+<h2>Day 16 notes</h2>
+<ul><li>Concept #16: cross-validation code ran, output above (holdout spread 0.600–0.783 vs k-fold 0.625–0.690). ✔</li><li>Security #16: NoSQL operator injection reproduced, then blocked, in a /tmp sandbox only. ✔</li><li>1584 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 016 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

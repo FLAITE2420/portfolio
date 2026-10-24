@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 023 — Watch the inputs, because the labels are late; and one parameter that means two things · Matías Rathgeb</title>
+<meta name="description" content="Day 023 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 023 OF 1600 · 2026-10-23</p>
+    <h1>Day 023 — Watch the inputs, because the labels are late; and one parameter that means two things</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-10-23 · <strong>Day:</strong> 23 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #23 — Drift belongs on the input side, and the KS statistic measures the distance</h2>
+<p>Yesterday I wrote down that a served model is a service with a contract. Today I</p>
+<p>opened the next part of MA03 (AI-Ops): monitoring. The requirement is the boring</p>
+<p>one everybody signs and nobody implements — *monitor the model in production and</p>
+<p>detect when its behaviour degrades*.</p>
+<p>Here is the problem with the obvious reading of that sentence. &quot;Degradation&quot; is</p>
+<p>measured by accuracy, and accuracy needs labels, and labels arrive after the</p>
+<p>fact — next week, next month, whenever a human finally checks the outcomes. So a</p>
+<p>model that broke this morning gets discovered by an accuracy dashboard three</p>
+<p>weeks from now, after every decision it made in between.</p>
+<p>The inputs, on the other hand, are available the instant the request arrives. So</p>
+<p>the operational question is not <em>&quot;is this model still accurate?&quot;</em> but *&quot;is this</p>
+<p>traffic still the traffic I trained on?&quot;* — and that is a question about two</p>
+<p>distributions, which is machinery I already have.</p>
+<p><strong>The statistic.</strong> The two-sample Kolmogorov–Smirnov distance is the largest gap</p>
+<p>between the two empirical cumulative distribution functions:</p>
+<pre><code>D = max over x of | F_baseline(x) - F_live(x) |</code></pre>
+<p>Two properties matter more than the formula. First, it is <strong>distribution-free</strong>:</p>
+<p>no assumption that the feature is normal, so it works on the odd feature I</p>
+<p>actually have. Second, it is a <strong>distance</strong>, not only a test: D = 0.09 is a small</p>
+<p>disagreement between two curves, D = 0.30 is a different population, whatever the</p>
+<p>sample size. That second property is the one I did not appreciate until I ran it.</p>
+<p><strong>What I tried today:</strong> a pure-stdlib implementation of D, its p-value through</p>
+<p>the Kolmogorov distribution (with Stephens&#x27; small-sample correction) and — so the</p>
+<p>p-value is not taken on faith — a permutation test on the same samples, which</p>
+<p>uses no formula at all. Then four scenarios against one baseline of 400 draws:</p>
+<p>nothing changed, the mean moved, the mean stayed and the spread widened, and a</p>
+<p>tiny shift with 5000 rows.</p>
+<pre><code># ks.py - drift on the INPUTS, because the labels arrive too late to be an alarm.
+# MA03 (AI-Ops): monitoring. The Kolmogorov-Smirnov two-sample statistic is a
+# distribution-free measure of &quot;how far apart are these two samples&quot;, and it
+# answers a question accuracy cannot answer on the day the traffic changes.
+import math, random
+
+def ks_two_sample(a, b):
+    &quot;&quot;&quot;Return (D, n1, n2). D = max distance between the two empirical CDFs.&quot;&quot;&quot;
+    xs = sorted(a)
+    ys = sorted(b)
+    n1, n2 = len(xs), len(ys)
+    i = j = 0
+    d = 0.0
+    while i &lt; n1 and j &lt; n2:
+        if xs[i] &lt;= ys[j]:
+            i += 1
+        else:
+            j += 1
+        d = max(d, abs(i / n1 - j / n2))
+    return d, n1, n2
+
+def ks_p_asymptotic(d, n1, n2):
+    &quot;&quot;&quot;Kolmogorov distribution, Stephens&#x27; correction for small samples.&quot;&quot;&quot;
+    ne = n1 * n2 / (n1 + n2)
+    lam = (math.sqrt(ne) + 0.12 + 0.11 / math.sqrt(ne)) * d
+    if lam &lt; 0.2:
+        return 1.0
+    total = 0.0
+    for k in range(1, 101):
+        term = 2.0 * (-1) ** (k - 1) * math.exp(-2.0 * k * k * lam * lam)
+        total += term
+        if abs(term) &lt; 1e-12:
+            break
+    return min(1.0, max(0.0, total))
+
+def ks_p_permutation(a, b, reps=1000, rng=None):
+    &quot;&quot;&quot;The same p-value without trusting the asymptotic formula at all.&quot;&quot;&quot;
+    rng = rng or random.Random(7)
+    observed, _, _ = ks_two_sample(a, b)
+    pool = list(a) + list(b)
+    n1 = len(a)
+    hits = 0
+    for _ in range(reps):
+        rng.shuffle(pool)
+        d, _, _ = ks_two_sample(pool[:n1], pool[n1:])
+        if d &gt;= observed - 1e-12:
+            hits += 1
+    return (hits + 1) / (reps + 1)
+
+def mean(v): return sum(v) / len(v)
+def sd(v):
+    m = mean(v)
+    return math.sqrt(sum((x - m) ** 2 for x in v) / (len(v) - 1))
+
+rng = random.Random(20261023)
+BASE = [rng.gauss(0.0, 1.0) for _ in range(400)]
+
+CASES = [
+    (&quot;same process, nothing changed&quot;,      [rng.gauss(0.0, 1.0) for _ in range(400)]),
+    (&quot;mean moved +0.6&quot;,                    [rng.gauss(0.6, 1.0) for _ in range(400)]),
+    (&quot;same mean, sd 1.0 -&gt; 1.8&quot;,           [rng.gauss(0.0, 1.8) for _ in range(400)]),
+    (&quot;same mean, n=5000, +0.08 shift&quot;,     [rng.gauss(0.08, 1.0) for _ in range(5000)]),
+]</code></pre>
+<p>Real output (Python 3, this session):</p>
+<pre><code>baseline: 400 samples, mean -0.062, sd 0.948
+
+case                                mean     sd       D   p(asym)  p(perm)  alarm
+same process, nothing changed      0.094  1.041   0.093  6.13e-02   0.0709  quiet
+mean moved +0.6                    0.579  1.011   0.298  4.43e-16   0.0010  DRIFT
+same mean, sd 1.0 -&gt; 1.8           0.008  1.817   0.185  1.77e-06   0.0010  DRIFT
+same mean, n=5000, +0.08 shift     0.083  1.013   0.090  4.40e-03     n/a  watch
+
+why the input side: on the day traffic changes, the labels for that traffic
+do not exist yet. Accuracy is a lagging measure; a feature distribution is not.
+row 1 is two draws from the SAME process and still lands at p=0.06: near the
+line means nothing. D is the size of the difference; p only says it exists.
+row 4: 5000 rows turn a 0.08 shift into p=0.004 while D stays at 0.09 --
+significant, and too small to act on. So a drift alarm reports D, not just p.</code></pre>
+<p><strong>What I understood from it:</strong> three things I did not have yesterday.</p>
+<p>The row that taught me most is the third. The mean is 0.008 — a mean monitor, the</p>
+<p>dashboard everybody builds first, would have reported <em>nothing wrong</em> on the day</p>
+<p>the spread widened from 1.0 to 1.8. A model trained on tight data and then fed a</p>
+<p>wide version of the same data is a model being asked questions it was never</p>
+<p>taught to answer, and no average shows it. D caught it at 0.185, p = 1.8e-06. The</p>
+<p>monitor has to compare the whole curve, not one number off it.</p>
+<p>Second: the pair of p-values. Asymptotic 6.1e-02 against permutation 7.1e-02 on</p>
+<p>the same data — the formula is not magic, it is an approximation that agrees with</p>
+<p>resampling here, and the permutation floor is 1/(reps+1) = 0.001, which is exactly</p>
+<p>why rows 2 and 3 both print 0.0010 and cannot be told apart. If I ever need to</p>
+<p>separate two real drifts by p-value, I need more permutations, not a better</p>
+<p>formula.</p>
+<p>Third, and least comfortable: with 5000 rows a shift of 0.08 in the mean is</p>
+<p>&quot;significant&quot; (p = 0.004) and completely uninteresting, because D stayed at 0.09.</p>
+<p>Significance scales with sample size; the distance does not. An alarm that fires</p>
+<p>on p alone pages somebody every week forever, and the person paged learns to</p>
+<p>ignore it. Report D, threshold on D, and use p only to know whether D is bigger</p>
+<p>than sampling noise.</p>
+<p>Honest limit: KS on one feature says nothing about the <em>joint</em> distribution. Ten</p>
+<p>features that are each individually fine can still make a combination the model</p>
+<p>has never seen. This is a smoke detector, not a fire inspection.</p>
+<p>---</p>
+<h2>Security #23 — HTTP parameter pollution: one query string, two parsers, two answers (CWE-235)</h2>
+<p>Twenty-two classes so far, and most were one component trusting its input. This</p>
+<p>one is different: the bug needs **two components that both read the same input</p>
+<p>correctly**. Neither is broken. They disagree about what a duplicated key means.</p>
+<p><code>?action=view&amp;action=delete</code> is not malformed. It is a legal query string with no</p>
+<p>single correct reading:</p>
+<ul><li>first occurrence wins — several WAFs, and ASP.NET&#x27;s <code>Request.QueryString</code></li><li>last occurrence wins — PHP&#x27;s <code>$_GET</code>, and most <code>dict(...)</code>-style parsers</li><li>all of them, as a list — Node&#x27;s <code>qs</code>, and <code>parse_qs</code> in Python</li></ul>
+<p>So a check that reads <code>action[0]</code> and a handler that reads <code>action[-1]</code> are</p>
+<p>looking at the same request and describing two different requests. The guard</p>
+<p>approves a read; the handler performs the delete.</p>
+<p><strong>The pattern I studied</strong> — the vulnerable shape, loopback only:</p>
+<pre><code>def first_value(pairs, key):          # what the guard inspects
+    for k, v in pairs:
+        if k == key:
+            return v
+    return &quot;&quot;
+
+def last_value(pairs, key):           # what the handler executes
+    out = &quot;&quot;
+    for k, v in pairs:
+        if k == key:
+            out = v
+    return out
+
+ALLOWED = {&quot;view&quot;, &quot;list&quot;, &quot;export&quot;}
+
+pairs    = parse_qsl(urlsplit(self.path).query, keep_blank_values=True)
+guard    = first_value(pairs, &quot;action&quot;)     # &quot;view&quot;   -&gt; allowed
+executed = last_value(pairs, &quot;action&quot;)      # &quot;delete&quot; -&gt; ORDER DELETED
+if guard not in ALLOWED:
+    return 403
+# ... then dispatch on `executed`</code></pre>
+<p>The same bug in the other direction is why guessing at hardening is useless:</p>
+<p><code>?action=delete&amp;action=view</code> is blocked by that same guard, because now the first</p>
+<p>value is the bad one. The attacker controls the order, so whichever parser the</p>
+<p>guard uses, the order can be arranged for the guard to see the harmless value.</p>
+<p><strong>What I understood about preventing it:</strong> the fix is not a better regex and not</p>
+<p>&quot;sanitize the input&quot;. The fix is that there must be exactly one interpretation of</p>
+<p>a request, decided once at the edge and passed forward as a data structure — and</p>
+<p>duplicate keys must be refused, not resolved.</p>
+<pre><code>def duplicate_keys(pairs):
+    seen, dup = set(), []
+    for k, _ in pairs:
+        if k in seen and k not in dup:
+            dup.append(k)
+        seen.add(k)
+    return dup
+
+pairs = parse_qsl(urlsplit(self.path).query, keep_blank_values=True)
+if duplicate_keys(pairs):                 # ambiguity is an error, not a choice
+    return 400
+action = first_value(pairs, &quot;action&quot;)     # now there is only one value
+if action not in ALLOWED:
+    return 403</code></pre>
+<p>Sandbox check (two local servers, 127.0.0.1, real HTTP requests, ports closed</p>
+<p>after the run):</p>
+<pre><code>[VULNERABLE] service on 127.0.0.1:8731
+   clean read       GET /orders?action=view
+                    -&gt; 200 check saw action=&#x27;view&#x27; -&gt; 200 allow | handler executed action=&#x27;view&#x27; -&gt; read only
+   padded read      GET /orders?action=view&amp;action=delete
+                    -&gt; 200 check saw action=&#x27;view&#x27; -&gt; 200 allow | handler executed action=&#x27;delete&#x27; -&gt; ORDER DELETED
+   reversed order   GET /orders?action=delete&amp;action=view
+                    -&gt; 403 blocked by check (saw action=&#x27;delete&#x27;)
+
+[FIXED] service on 127.0.0.1:8732
+   clean read       GET /orders?action=view
+                    -&gt; 200 one value, checked once: action=&#x27;view&#x27; -&gt; read only
+   padded read      GET /orders?action=view&amp;action=delete
+                    -&gt; 400 rejected: duplicate parameter(s) [&#x27;action&#x27;]
+   reversed order   GET /orders?action=delete&amp;action=view
+                    -&gt; 400 rejected: duplicate parameter(s) [&#x27;action&#x27;]</code></pre>
+<p><strong>What I understood:</strong> this is the same shape as the request smuggling day — two</p>
+<p>parsers, one buffer — moved up a layer, from the byte framing into the query</p>
+<p>string. Anywhere a request crosses a component boundary and gets parsed twice,</p>
+<p>&quot;what does this request say?&quot; has to be answered once, before the first parser,</p>
+<p>and the answer has to travel with the request. A WAF that re-parses the raw URI it</p>
+<p>was handed can only ever hold an opinion about a request the application is free</p>
+<p>to read differently.</p>
+<p>Honest part: my demo keeps both parsers in one file on purpose — clearest way to</p>
+<p>show the disagreement, least realistic deployment. In the field the guard is a</p>
+<p>different process, written by a different team, in a different language, which is</p>
+<p>exactly why nobody notices the disagreement until it is used.</p>
+<p>---</p>
+<h2>Day 23 notes</h2>
+<ul><li>Concept #23: code ran, output above. ✔</li><li>Security #23: understood the idea, sandbox only, both servers shut down. ✔</li><li>1577 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 023 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 011 — Many weak learners, each fixing the last one&#x27;s mistakes · Matías Rathgeb</title>
+<meta name="description" content="Day 011 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 011 OF 1600 · 2026-09-26</p>
+    <h1>Day 011 — Many weak learners, each fixing the last one&#x27;s mistakes</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-09-26 · <strong>Day:</strong> 11 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #11 — Boosting: grow weak learners one after another, not all at once</h2>
+<p>Yesterday&#x27;s forest (day 10) grew its trees <strong>side by side</strong> — each on its own</p>
+<p>bootstrap sample — and let them vote. The course calls that <strong>bagging</strong>. Today I</p>
+<p>learned the other half of the ensembles story, and it runs the opposite way:</p>
+<p><strong>boosting</strong>. Instead of many independent trees, you grow them **one after</p>
+<p>another**, and each new one is told to focus on the rows the team still gets</p>
+<p>wrong.</p>
+<p>The slide deck (MA01, Week 8 — <em>Advanced SVM and Ensembles</em>) puts the contrast</p>
+<p>in one line: *bagging generates complementary learners randomly, boosting</p>
+<p>generates them actively.* Random forests hope the trees&#x27; mistakes differ;</p>
+<p>boosting <strong>forces</strong> the next learner to look at exactly where the last one</p>
+<p>failed.</p>
+<p>The concrete version is <strong>AdaBoost</strong>. It keeps a <strong>weight</strong> on every training</p>
+<p>row, all equal at the start. Then, round after round:</p>
+<p>1. Fit one weak learner — here a <strong>decision stump</strong>, a single feature/threshold</p>
+<p>   split — that makes the smallest <em>weighted</em> error.</p>
+<p>2. Score it: <code>alpha = 0.5 · ln((1 − err) / err)</code>. A stump barely better than</p>
+<p>   guessing gets a small say; a good one gets a big say.</p>
+<p>3. <strong>Raise the weight of every row it got wrong</strong>, lower the ones it got right,</p>
+<p>   and renormalise. The next stump is now pulled toward the hard rows.</p>
+<p>4. The final answer is the <strong>weighted vote</strong> of all the stumps: <code>sign(Σ alpha·h)</code>.</p>
+<p>The requirement the slides stress — *base learners should be simple, no</p>
+<p>overfitting* — is the whole trick. A stump is so weak it cannot memorise</p>
+<p>anything, so boosting has room to keep adding them without the ensemble eating</p>
+<p>itself.</p>
+<p><strong>What I tried today:</strong> I built AdaBoost from scratch (pure standard library) on</p>
+<p>a <strong>circular</strong> decision boundary — label 1 inside a disk, 0 outside. A single</p>
+<p>axis-aligned stump cannot trace a curve, so it should be mediocre; a boosted</p>
+<p>team of stumps should carve the disk out. I ran it over 5 datasets with 5%</p>
+<p>label noise and averaged, so one lucky split could not fool me.</p>
+<pre><code>#!/usr/bin/env python3
+# adaboost_stumps.py - boost many weak stumps into one strong rule.
+# MA01 (Machine Learning), Week 8 &quot;Advanced SVM and Ensembles&quot;. Pure stdlib.
+#
+# Boundary is a DISK around (0.5, 0.5): label = 1 inside, 0 outside.
+# The edge is curved, so no single axis-aligned stump can trace it -- one
+# stump is mediocre, but a boosted team of stumps carves the disk out.
+import math, random
+
+def make_disk(seed, n, noise):
+    rnd = random.Random(seed)
+    rows = []
+    for _ in range(n):
+        x, y = rnd.random(), rnd.random()
+        label = 1 if (x - 0.5) ** 2 + (y - 0.5) ** 2 &lt; 0.09 else 0
+        if rnd.random() &lt; noise:
+            label = 1 - label
+        rows.append((x, y, label))
+    return rows
+
+def stump(rows, weights):
+    # Find the single (feature, threshold, direction) with lowest weighted error.
+    best = None
+    for fi in range(2):
+        vals = sorted({r[fi] for r in rows})
+        for i in range(len(vals) - 1):
+            thr = (vals[i] + vals[i + 1]) / 2
+            for pol in (1, -1):                       # which side -&gt; class 1
+                err = 0.0
+                for r, w in zip(rows, weights):
+                    pred = 1 if (pol * (r[fi] - thr)) &gt; 0 else 0
+                    if pred != r[-1]:
+                        err += w
+                if best is None or err &lt; best[0]:
+                    best = (err, fi, thr, pol)
+    return best
+
+def stump_predict(model, row):
+    _, fi, thr, pol = model
+    return 1 if (pol * (row[fi] - thr)) &gt; 0 else 0
+
+def adaboost(rows, rounds):
+    n = len(rows)
+    weights = [1.0 / n] * n
+    team = []
+    for _ in range(rounds):
+        err, fi, thr, pol = stump(rows, weights)
+        err = min(max(err, 1e-10), 1 - 1e-10)
+        alpha = 0.5 * math.log((1 - err) / err)
+        team.append((alpha, (err, fi, thr, pol)))
+        for i, r in enumerate(rows):
+            pred = stump_predict((err, fi, thr, pol), r)
+            weights[i] *= math.exp(-alpha if pred == r[-1] else alpha)
+        s = sum(weights)
+        weights = [w / s for w in weights]            # renormalise
+    return team
+
+def boost_predict(team, row):
+    score = sum(a if stump_predict(m, row) == 1 else -a for a, m in team)
+    return 1 if score &gt; 0 else 0
+
+NOISE, SEEDS, ROUNDS = 0.05, 5, 15
+single_te, boost_te, single_tr, boost_tr = [], [], [], []
+first_stumps = None
+
+for s in range(SEEDS):
+    rows = make_disk(100 + s, 400, NOISE)
+    rnd = random.Random(s)
+    rnd.shuffle(rows)
+    train, test = rows[:300], rows[300:]
+
+    one = stump(train, [1.0 / len(train)] * len(train))
+    team = adaboost(train, ROUNDS)
+
+    single_tr.append(sum(1 for r in train if stump_predict(one, r) == r[-1]) / len(train))
+    single_te.append(sum(1 for r in test  if stump_predict(one, r) == r[-1]) / len(test))
+    boost_tr.append(sum(1 for r in train if boost_predict(team, r) == r[-1]) / len(train))
+    boost_te.append(sum(1 for r in test  if boost_predict(team, r) == r[-1]) / len(test))
+
+    if s == 0:
+        first_stumps = [(round(a, 3), m[1], round(m[2], 3), m[3]) for a, m in team[:3]]
+
+avg = lambda xs: sum(xs) / len(xs)
+print(f&quot;{SEEDS} disk datasets, 300 train / 100 test, {NOISE:.0%} label noise, averaged:&quot;)
+print(f&quot;Single best stump           train {avg(single_tr):.3f}   test {avg(single_te):.3f}&quot;)
+print(f&quot;AdaBoost, {ROUNDS} stumps       train {avg(boost_tr):.3f}   test {avg(boost_te):.3f}&quot;)
+print(f&quot;\nFirst 3 stumps of run 0 as (alpha, feature, threshold, direction):&quot;)
+for st in first_stumps:
+    print(f&quot;  alpha={st[0]:&gt;6}  feature={st[1]}  threshold={st[2]:&gt;5}  dir={st[3]:+d}&quot;)</code></pre>
+<p>Real output (<code>python3 adaboost_stumps.py</code>, Python 3.11.15):</p>
+<pre><code>5 disk datasets, 300 train / 100 test, 5% label noise, averaged:
+Single best stump           train 0.699   test 0.684
+AdaBoost, 15 stumps       train 0.908   test 0.860
+
+First 3 stumps of run 0 as (alpha, feature, threshold, direction):
+  alpha= 0.416  feature=1  threshold=0.998  dir=+1
+  alpha= 0.306  feature=1  threshold=0.212  dir=+1
+  alpha= 0.228  feature=1  threshold=0.024  dir=-1</code></pre>
+<p><strong>What I understood from it:</strong> the single stump tops out at <strong>0.684</strong> on rows it</p>
+<p>never saw — it can only cut the square on one axis, so the curved disk is simply</p>
+<p>beyond it. Fifteen boosted stumps reach <strong>0.860</strong>. That is the real difference</p>
+<p>from yesterday: the forest lowered its <em>training</em> score to win on test, but</p>
+<p>boosting raises <strong>both</strong> — 0.908 train, 0.860 test — because it is not averaging</p>
+<p>away noise, it is <strong>targeting</strong> the rows it keeps getting wrong. The three</p>
+<p>alphas in the output tell the story of the sequence: the first stump (0.416) is</p>
+<p>the strongest single cut, the next two are weaker (0.306, 0.228) and they flip</p>
+<p>directions (+1, +1, −1) — each one is patching the border of the disk the</p>
+<p>previous ones sliced off. That is &quot;actively generating complementary learners&quot;:</p>
+<p>the later learners exist <em>because</em> the earlier ones were not enough. The thing I</p>
+<p>will keep: bagging fights <strong>variance</strong> (many noisy trees, average them),</p>
+<p>boosting fights <strong>bias</strong> (weak learners that cannot bend around the boundary),</p>
+<p>and the price of boosting is that the base learners must stay weak — if I fed it</p>
+<p>a deep tree, the ensemble would just overfit faster.</p>
+<p>---</p>
+<h2>Security #11 — Timing attack: a comparison that tells you how far you got (CWE-208)</h2>
+<p><strong>What I learned about this topic — contained, sandbox only, no live targets:</strong></p>
+<p>Every injection I have studied so far corrupted the <em>input</em>. This one corrupts</p>
+<p>nothing and malforms nothing: the program is correct, and it still leaks its</p>
+<p>secret through <strong>how long it takes to say no</strong>. <strong>CWE-208</strong>, observable timing</p>
+<p>discrepancy.</p>
+<p>The shape is one line of ordinary code:</p>
+<p>    for a, b in zip(guess, secret):</p>
+<p>        if a != b:</p>
+<p>            return False        # &lt;-- returns EARLIER the sooner the bytes differ</p>
+<p>A comparison like <code>==</code> on strings, <code>strcmp</code>, or a naive MAC check **stops at the</p>
+<p>first wrong byte**. So the running time is proportional to the length of the</p>
+<p><strong>correct prefix</strong>. Guess a token byte by byte: send a candidate, and the one</p>
+<p>whose first byte is right takes measurably longer than the ones that fail</p>
+<p>instantly. Keep the winning byte, move to the next position, repeat. After</p>
+<p>N × alphabet tries you have the whole secret — and you never had to guess it in</p>
+<p>one shot, which is exactly what makes an unguessable secret guessable.</p>
+<p>The subtle part is <strong>why this matters practically</strong>: the leak is tiny (a</p>
+<p>handful of nanoseconds per byte), so a single request tells you nothing. The</p>
+<p>attack is <em>statistical</em> — thousands of timings, averaged, pull the correct byte</p>
+<p>out of the noise. That is also why it hides: no crash, no error log, no weird</p>
+<p>input. Just a login endpoint that is a fraction of a millisecond slower when you</p>
+<p>guessed one more character right.</p>
+<p>I reproduced it in my own sandbox (/tmp): a comparator with the classic</p>
+<p>early-exit bug, over a made-up secret, no network and no real service. Because a</p>
+<p>bare Python byte loop only leaks ~45 ns per byte, I made each matched byte do a</p>
+<p>real, visible unit of work (a hash step) so the leak is measurable on this</p>
+<p>laptop. Then I ran the whole recovery, and afterwards the same test against a</p>
+<p>constant-time comparison.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code>def leaky_compare(guess, secret):
+    if len(guess) != len(secret):
+        return False
+    h = b&quot;&quot;
+    for a, b in zip(guess, secret):
+        if a != b:
+            return False                     # bails out HERE, earlier or later
+        h = hashlib.sha256(h + bytes([a])).digest()   # work only while prefix is right
+    return True
+# time to return == number of leading bytes you got right  -&gt;  the leak</code></pre>
+<p><strong>What I understood about preventing it:</strong></p>
+<pre><code>import hmac
+# Compare in constant time: no early exit, always touch the same number of
+# bytes, regardless of where (or whether) they differ.
+hmac.compare_digest(candidate, secret)       # returns bool, leaks nothing
+# Rule: NEVER compare secrets/passwords/tokens/MACs with == or strcmp.
+# Use a constant-time primitive. And do not branch on the secret&#x27;s contents.</code></pre>
+<p>Sandbox check (local only, /tmp, no network, no target):</p>
+<pre><code>$ python3 timing_attack.py
+1) Time leaks the length of the correct prefix.
+    0 correct bytes -&gt;     832571 ns / 2000 runs
+    4 correct bytes -&gt;   12150874 ns / 2000 runs
+    8 correct bytes -&gt;   19583849 ns / 2000 runs
+   12 correct bytes -&gt;   29540219 ns / 2000 runs
+   16 correct bytes -&gt;   33622542 ns / 2000 runs
+   20 correct bytes -&gt;   47888688 ns / 2000 runs
+
+2) Recover the secret one byte at a time (slowest candidate wins).
+   recovered: &#x27;c&#x27;
+   recovered: &#x27;co&#x27;
+   recovered: &#x27;cor&#x27;
+   recovered: &#x27;corr&#x27;
+   recovered: &#x27;corre&#x27;
+   recovered: &#x27;correc&#x27;
+   recovered: &#x27;correct&#x27;
+   recovered: &#x27;correct-&#x27;
+   recovered: &#x27;correct-h&#x27;
+   recovered: &#x27;correct-ho&#x27;
+   recovered: &#x27;correct-hor&#x27;
+   recovered: &#x27;correct-hors&#x27;
+   recovered: &#x27;correct-horse&#x27;
+   recovered: &#x27;correct-horse-&#x27;
+   recovered: &#x27;correct-horse-b&#x27;
+   recovered: &#x27;correct-horse-ba&#x27;
+   recovered: &#x27;correct-horse-bat&#x27;
+   recovered: &#x27;correct-horse-batt&#x27;
+   recovered: &#x27;correct-horse-batte&#x27;
+   recovered: &#x27;correct-horse-batter&#x27;
+   recovered: &#x27;correct-horse-battery&#x27;
+
+Recovered : correct-horse-battery
+Actual    : correct-horse-battery
+Match     : True
+
+3) Constant-time compare (hmac.compare_digest): flat, no leak.
+   21 bytes match  -&gt;   15680812 ns / 100k runs (mean of 5)
+   20 bytes match  -&gt;   13039077 ns / 100k runs (mean of 5)
+   0 bytes match   -&gt;   14760777 ns / 100k runs (mean of 5)</code></pre>
+<p><strong>What I understood:</strong> part 1 is the whole bug in one table — zero correct</p>
+<p>bytes returns in <strong>0.8 ms</strong> per 2000 runs, twenty correct bytes take <strong>47.9 ms</strong>.</p>
+<p>Nothing above leaks the <em>value</em>, but the <em>shape</em> of how long it took is a ruler</p>
+<p>laid against the secret. Part 2 is the payoff: the script walked the alphabet</p>
+<p>21 times and printed the secret <strong><code>correct-horse-battery</code></strong> — recovered, `Match:</p>
+<p>True`, without ever submitting the full string. Part 3 is the fix in numbers:</p>
+<p>with <code>hmac.compare_digest</code> the time no longer depends on how many bytes match</p>
+<p>(15.7, 13.0, 14.8 ms — pure noise, no trend). The lesson I am keeping is that</p>
+<p>&quot;correct&quot; and &quot;secure&quot; are not the same question. This comparison never had a</p>
+<p>bug in the sense of returning a wrong answer — it always said yes or no</p>
+<p>correctly. It just <strong>answered too fast for the wrong cases</strong>, and that speed was</p>
+<p>the vulnerability. Security is not only what the code decides; sometimes it is</p>
+<p><strong>how long it took to decide</strong>.</p>
+<p>---</p>
+<h2>Day 11 notes</h2>
+<ul><li>Concept #11: AdaBoost — single stump test 0.684, 15 boosted stumps test 0.860. ✔</li><li>Security #11: timing attack (CWE-208) — leak 0.8 ms → 47.9 ms by prefix length; secret recovered byte by byte; constant-time compare flat. ✔</li><li>1589 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 011 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

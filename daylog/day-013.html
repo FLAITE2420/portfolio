@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 013 — The one axis that keeps the spread · Matías Rathgeb</title>
+<meta name="description" content="Day 013 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 013 OF 1600 · 2026-09-28</p>
+    <h1>Day 013 — The one axis that keeps the spread</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-09-28 · <strong>Day:</strong> 13 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #13 — PCA: instead of picking the best column, build a new axis where the data is widest</h2>
+<p>Twelve days of classifiers all did the same thing in the end: they drew a</p>
+<p>boundary in the <strong>space of the features I gave them</strong>. Today I stopped asking</p>
+<p>how to split the data and asked a question underneath that one — *are these</p>
+<p>even the right axes?* That is <strong>principal component analysis</strong>, and it exists</p>
+<p>because the columns we collect are almost never the directions in which the</p>
+<p>data actually varies most.</p>
+<p>The course slides (MA01, Week 4 — <em>Dimensionality Reduction (PCA &amp; LDA)</em>) put</p>
+<p>a trap on it in plain letters, and I have to be honest that I nearly fell into</p>
+<p>it. The lazy reading of &quot;reduce the dimensions&quot; is *keep the columns that look</p>
+<p>most useful and drop the rest* — that is <strong>feature selection</strong>. PCA is not</p>
+<p>that. PCA <strong>builds brand-new columns</strong> by mixing the old ones together, and it</p>
+<p>picks the mix that points along the direction where the cloud of points is</p>
+<p><strong>stretched the widest</strong>. The first such direction is <strong>PC1</strong>: the single axis</p>
+<p>that keeps the most spread (variance). The second, <strong>PC2</strong>, is the widest</p>
+<p>direction <em>perpendicular</em> to PC1, and so on.</p>
+<p>Why the widest direction? Because variance is information. If two features</p>
+<p>move together — tall people also weigh more — then almost everything the two</p>
+<p>columns know is already captured by one combined axis running along their</p>
+<p>diagonal. Keeping that one axis loses very little; the second axis only carries</p>
+<p>the small leftover difference. And a new axis that is a <em>mix</em> can beat any</p>
+<p>single original column, because it is allowed to lean into the correlation the</p>
+<p>original columns share.</p>
+<p><strong>What I tried today:</strong> I built PCA from scratch with nothing but the standard</p>
+<p>library. I generate two features that share a hidden driver (so they are</p>
+<p>correlated), standardise them so neither has a size advantage, build the</p>
+<p><strong>covariance matrix</strong>, and find its top eigenvector — the PC1 direction — with</p>
+<p><strong>power iteration</strong> (keep multiplying the matrix by a vector and re-normalising</p>
+<p>until it stops turning). Then I measure, honestly, two things: how much of the</p>
+<p>total variance PC1 keeps, and how much is kept by the lazy plan of just</p>
+<p>throwing one original column away. Both numbers use the same data.</p>
+<pre><code>#!/usr/bin/env python3
+# pca_stdlib.py - principal component analysis by hand, pure standard library.
+# MA01 (Machine Learning), Week 4 &quot;Dimensionality Reduction (PCA &amp; LDA)&quot;.
+#
+# The trap the course warns about: PCA is NOT &quot;picking the best column&quot;. It
+# builds a NEW axis -- a combination of the old ones -- aimed at the direction
+# where the data is spread the widest. Here I compute that axis with power
+# iteration on the covariance matrix and compare it, honestly, against the
+# lazy alternative of simply dropping one original feature.
+import math, random
+
+def make_data(seed, n):
+    rnd = random.Random(seed)
+    rows = []
+    for _ in range(n):
+        latent = rnd.gauss(0.0, 1.0)          # the hidden thing driving both columns
+        x1 = latent + rnd.gauss(0.0, 0.35)    # column 1: latent + its own noise
+        x2 = 0.85 * latent + rnd.gauss(0.0, 0.35)  # column 2: same latent, weaker
+        rows.append((x1, x2))
+    return rows
+
+def standardize(rows):
+    n = len(rows)
+    cols = list(zip(*rows))
+    means = [sum(c) / n for c in cols]
+    stds = [math.sqrt(sum((v - m) ** 2 for v in c) / n) or 1.0 for c, m in zip(cols, means)]
+    return [tuple((v - m) / s for v, m, s in zip(r, means, stds)) for r in rows]
+
+def covariance(rows):
+    n = len(rows)
+    p = len(rows[0])
+    cov = [[sum(r[i] * r[j] for r in rows) / n for j in range(p)] for i in range(p)]
+    return cov
+
+def mat_vec(m, v):
+    return [sum(m[i][j] * v[j] for j in range(len(v))) for i in range(len(m))]
+
+def power_iteration(cov, iters=200):
+    p = len(cov)
+    v = [1.0 / math.sqrt(p)] * p
+    for _ in range(iters):
+        w = mat_vec(cov, v)
+        norm = math.sqrt(sum(x * x for x in w)) or 1.0
+        v = [x / norm for x in w]
+    eigenvalue = sum(v[i] * mat_vec(cov, v)[i] for i in range(p))
+    return eigenvalue, v
+
+def trace(cov):
+    return sum(cov[i][i] for i in range(len(cov)))
+
+def residual_variance(rows, axis):
+    # project onto the axis, reconstruct, measure what is left over
+    n = len(rows)
+    left = 0.0
+    for r in rows:
+        proj = sum(a * b for a, b in zip(axis, r))
+        recon = [proj * a for a in axis]
+        left += sum((a - b) ** 2 for a, b in zip(r, recon))
+    return left / n
+
+rows = standardize(make_data(7, 4000))
+cov = covariance(rows)
+total = trace(cov)
+ev, pc1 = power_iteration(cov)
+kept = ev / total
+# best single original feature = keep the column with the largest variance (all 1.0 here)
+best_col_var = max(cov[i][i] for i in range(len(cov)))
+drop_col_kept = best_col_var / total
+
+print(&quot;standardised data, 2 features, 4000 points (all feature variances = 1.000)&quot;)
+print(f&quot;covariance off-diagonal      : {cov[0][1]:.3f}   (features move together)&quot;)
+print(f&quot;PC1 direction (unit vector)  : [{pc1[0]:.3f}, {pc1[1]:.3f}]&quot;)
+print(f&quot;PC1 variance                 : {ev:.3f}&quot;)
+print(f&quot;variance kept by PCA (1 axis): {kept*100:.1f}%&quot;)
+print(f&quot;variance kept dropping a column: {drop_col_kept*100:.1f}%&quot;)
+print(f&quot;residual (lost) variance PCA : {residual_variance(rows, pc1):.3f}&quot;)</code></pre>
+<p>Real output (<code>python3 pca_stdlib.py</code>, Python 3.11.15):</p>
+<pre><code>standardised data, 2 features, 4000 points (all feature variances = 1.000)
+covariance off-diagonal      : 0.874   (features move together)
+PC1 direction (unit vector)  : [0.707, 0.707]
+PC1 variance                 : 1.874
+variance kept by PCA (1 axis): 93.7%
+variance kept dropping a column: 50.0%
+residual (lost) variance PCA : 0.126</code></pre>
+<p><strong>What I understood from it:</strong> the two features share a driver, so their</p>
+<p>covariance off the diagonal is <strong>0.874</strong> — almost the whole 1.0 of a</p>
+<p>standardised column. The power iteration settles on the direction</p>
+<p><strong>[0.707, 0.707]</strong> — a perfect 45° mix, dead between the two columns, which is</p>
+<p>exactly where a correlated cloud is longest. One axis along that mix keeps</p>
+<p><strong>93.7%</strong> of everything. Now the honest comparison: both original columns have</p>
+<p>variance 1.000, so the <em>best possible</em> single column keeps <strong>50.0%</strong> — half of</p>
+<p>the total is on the diagonal, and one column can only see its own half. So the</p>
+<p>number that matters is 93.7 against 50.0. The lazy plan loses <strong>43.7 points</strong></p>
+<p>of variance; PCA loses <strong>6.3</strong>. That gap is the whole idea: PC1 was allowed to</p>
+<p>lean into the correlation, so it captured both columns&#x27; shared motion at once,</p>
+<p>while any single column stays blind to the other. And the residual — <strong>0.126</strong> —</p>
+<p>is just the noise I planted (two 0.35-noise features), which no rotation can</p>
+<p>remove, because it is genuinely irreducible. That is what &quot;dimensionality</p>
+<p>reduction&quot; sells: not a smaller copy of the columns, but a smarter axis that</p>
+<p>spends its one dimension where the data actually has something to say.</p>
+<p>---</p>
+<h2>Security #13 — Prototype pollution: a deep-merge that edits the objects you did not pass it (CWE-1321)</h2>
+<p><strong>What I learned about this topic — contained, sandbox only, no live targets:</strong></p>
+<p>The last injection days (SQL, commands, templates) all had the same shape: *my</p>
+<p>input was read as code by a parser*. Today&#x27;s bug is stranger, and it is a hole</p>
+<p>I had not really understood. In JavaScript, <strong>prototype pollution (CWE-1321)</strong>.</p>
+<p>It is not about a query or a template. It is about the <strong>object model itself</strong>.</p>
+<p>Every plain object in JavaScript inherits from one shared ancestor,</p>
+<p><code>Object.prototype</code>. If <em>anything</em> adds a property to that ancestor, **every</p>
+<p>object in the process suddenly has that property** — objects that already</p>
+<p>existed, objects the attacker never saw, objects not yet created. And the door</p>
+<p>is usually a <strong>&quot;helpful&quot; deep-merge / recursive-extend function</strong>: the kind of</p>
+<p>utility that walks a user-supplied JSON body and copies each key into a config</p>
+<p>or a record. If the body contains a <code>__proto__</code> key — the magic key that means</p>
+<p>&quot;reach up to the ancestor&quot; — the merge follows it and plants a property where</p>
+<p>the whole app can see it.</p>
+<p>Why this is an <strong>auth bypass</strong>, not a curiosity: server-side authorization</p>
+<p>code is often written as a truthy check. <code>if (user.isAdmin) { ... }</code>. The check</p>
+<p>assumes <code>isAdmin</code> is absent unless <em>that</em> user has it. But after pollution,</p>
+<p><code>isAdmin</code> is inherited by <em>every</em> object, so the check passes for users who</p>
+<p>never had the flag, sometimes for anyone. One crafted <code>{&quot;__proto__&quot;:{...}}</code> in</p>
+<p>a request body can flip a global switch for the rest of the process&#x27;s life —</p>
+<p>and because nothing wrote to a user record, it is easy to miss in a diff.</p>
+<p>I reproduced it in my sandbox (/tmp): a naive recursive merge, a mock</p>
+<p>attacker-controlled JSON body, and a plain &quot;session user&quot; check. Everything is</p>
+<p>fake and local; no network, no target. Then I wrote the fix and re-ran.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code>// A &quot;helpful&quot; config merge utility. Walks the source, copies every key.
+function deepMerge(target, source) {
+  for (const key in source) {
+    if (typeof source[key] === &#x27;object&#x27; &amp;&amp; source[key] !== null) {
+      if (!target[key]) target[key] = {};
+      deepMerge(target[key], source[key]);   // follows __proto__ straight up
+    } else {
+      target[key] = source[key];
+    }
+  }
+  return target;
+}
+
+// The attacker controls the JSON body. They never touch a real user record.
+deepMerge({}, JSON.parse(&#x27;{&quot;__proto__&quot;:{&quot;isAdmin&quot;:true}}&#x27;));
+
+const sessionUser = {};        // created elsewhere, never granted admin
+if (sessionUser.isAdmin) { /* ACCESS GRANTED -- inherited from the prototype */ }</code></pre>
+<p><strong>What I understood about preventing it:</strong></p>
+<pre><code>function safeMerge(target, source) {
+  for (const key of Object.keys(source)) {
+    // 1. refuse the keys that reach the prototype chain
+    if (key === &#x27;__proto__&#x27; || key === &#x27;constructor&#x27; || key === &#x27;prototype&#x27;) continue;
+    const val = source[key];
+    if (val &amp;&amp; typeof val === &#x27;object&#x27;) {
+      // 2. build children with a null prototype so they inherit nothing
+      target[key] = safeMerge(Object.create(null), val);
+    } else {
+      target[key] = val;
+    }
+  }
+  return target;
+}
+// Rules:
+//  - Merge only own, expected keys; allow-list the schema, do not black-list.
+//  - Reject/strip __proto__, constructor, prototype on ANY untrusted input.
+//  - Use null-prototype objects (Object.create(null)) or a Map for configs.
+//  - Freeze the prototypes you never intend to change (Object.freeze(Object.prototype)).
+//  - Authorization must read an own field (hasOwnProperty / explicit column),
+//    never a truthy inherited one.</code></pre>
+<p>Sandbox check (local only, /tmp, no network, no target, Node v22.23.1):</p>
+<pre><code>$ node prototype_pollution.js
+before attack  isAdmin = undefined
+after attack   isAdmin = true -&gt; ACCESS GRANTED (bypass)
+fixed merge    isAdmin = undefined -&gt; denied (safe)</code></pre>
+<p><strong>What I understood:</strong> the first line is the world before the attack — a brand</p>
+<p>new object has no <code>isAdmin</code>, so the check would be <code>undefined</code> and the guard</p>
+<p>would hold. Then one merge of one JSON body, and a **completely different,</p>
+<p>never-touched object** answers <code>true</code>. That is the part I had been missing: the</p>
+<p>attacker&#x27;s input never became a user; it became a property of the *ancestor</p>
+<p>that every user inherits from*. The authorization code was correct — it read</p>
+<p><code>sessionUser.isAdmin</code> faithfully. It just could not tell the difference between</p>
+<p>&quot;this user was granted admin&quot; and &quot;every object in this process now says</p>
+<p>admin&quot;. The fixed line shows the same payload going in and changing nothing,</p>
+<p>because the merge refuses to follow <code>__proto__</code> and the child object it builds</p>
+<p>inherits from nothing. The lesson lands right next to day 6 (IDOR): access</p>
+<p>checks are only as strong as the <em>identity</em> they actually read. Read an owned,</p>
+<p>explicit field — not one that an untrusted merge could have handed to everyone.</p>
+<p>---</p>
+<h2>Day 13 notes</h2>
+<ul><li>Concept #13: PCA from scratch — PC1 = [0.707, 0.707] keeps 93.7% of the variance vs 50.0% for dropping a column. ✔</li><li>Security #13: prototype pollution (CWE-1321) — <code>{&quot;__proto__&quot;:{&quot;isAdmin&quot;:true}}</code> turns <code>undefined</code> into <code>true</code> on an untouched object; null-proto + key guard blocks it. ✔</li><li>1587 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 013 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

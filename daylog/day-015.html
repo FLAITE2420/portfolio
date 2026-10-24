@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 015 — The number that said 93% about a model that learned nothing · Matías Rathgeb</title>
+<meta name="description" content="Day 015 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 015 OF 1600 · 2026-10-08</p>
+    <h1>Day 015 — The number that said 93% about a model that learned nothing</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-10-08 · <strong>Day:</strong> 15 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #15 — Confusion matrix, precision and recall: accuracy stops telling the truth on lopsided data</h2>
+<p>For fourteen days I compared models almost entirely by one number — how often</p>
+<p>they got the right answer. It is the first number anyone learns and it is</p>
+<p>quietly the most dangerous one, because it is only honest when the two classes</p>
+<p>are roughly balanced. The course slides (MA01, Week 5 — *how to properly</p>
+<p>evaluate machine learning models*) put it plainly, and today I finally felt it:</p>
+<p>when one class is rare, <strong>accuracy is a liar</strong>.</p>
+<p>The setup is a screening problem. Only a small slice of the rows are positive</p>
+<p>(the thing you actually care about). A model that predicts *the majority class</p>
+<p>for every single row* — it does no work at all — scores the base rate as its</p>
+<p>accuracy. Nine times out of ten it &quot;looks good&quot; while having a recall of</p>
+<p><strong>zero</strong>: it never once finds a positive, and the number never shows it.</p>
+<p>The fix is to stop collapsing everything into one figure and look at the</p>
+<p><strong>confusion matrix</strong> — the four counts of what was true versus what was</p>
+<p>predicted. From those four cells come the two numbers accuracy hid:</p>
+<p><strong>precision</strong> (of the rows I flagged, how many were real?) and <strong>recall</strong> (of</p>
+<p>the real rows, how many did I flag?). They pull in opposite directions, which</p>
+<p>is exactly why both are needed. F1 is the single number that refuses to look</p>
+<p>good while either one is bad.</p>
+<p><strong>What I tried today:</strong> I wrote the four-count confusion matrix and the three</p>
+<p>metrics from scratch, standard library only. I generated a lopsided dataset</p>
+<p>(few positives) and compared a do-nothing model against real thresholds, to see</p>
+<p>the accuracy lie fall apart in front of me.</p>
+<pre><code>#!/usr/bin/env python3
+# evaluation.py - why accuracy lies on lopsided data.
+# MA01 (Machine Learning) - Week 5: how to properly evaluate a model.
+#
+# Accuracy = (correct) / (total). On a balanced problem it is fine. On a
+# lopsided one it is a trap: a model that predicts the majority class for
+# EVERY row is &quot;93% accurate&quot; and it has learned nothing. Precision and
+# recall pull the two kinds of error apart so the number cannot hide them.
+import random
+
+
+def make_data(seed, n, pos_rate):
+    # two features, one lopsided label. Only ~pos_rate of the rows are class 1.
+    rnd = random.Random(seed)
+    rows = []
+    for _ in range(n):
+        y = 1 if rnd.random() &lt; pos_rate else 0
+        # class 1 is shifted up a bit on x, so a model CAN separate it
+        x = rnd.gauss(0.9 if y == 1 else 0.0, 1.0)
+        rows.append((x, y))
+    return rows
+
+
+def always_negative(rows):
+    return [0 for _ in rows]
+
+
+def threshold_model(rows, cut):
+    # predict 1 when the feature is above a cut, else 0
+    return [1 if r[0] &gt; cut else 0 for r in rows]
+
+
+def confusion(truth, pred):
+    tp = sum(1 for t, p in zip(truth, pred) if t == 1 and p == 1)
+    fp = sum(1 for t, p in zip(truth, pred) if t == 0 and p == 1)
+    fn = sum(1 for t, p in zip(truth, pred) if t == 1 and p == 0)
+    tn = sum(1 for t, p in zip(truth, pred) if t == 0 and p == 0)
+    return tp, fp, fn, tn
+
+
+def report(name, truth, pred):
+    tp, fp, fn, tn = confusion(truth, pred)
+    total = tp + fp + fn + tn
+    acc = (tp + tn) / total
+    prec = tp / (tp + fp) if (tp + fp) else 0.0
+    rec = tp / (tp + fn) if (tp + fn) else 0.0
+    f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
+    print(f&quot;{name:&lt;20} acc={acc:.3f}  prec={prec:.3f}  recall={rec:.3f}  f1={f1:.3f}&quot;)
+    print(f&quot;{&#x27;&#x27;:&lt;20} TP={tp:&lt;4} FP={fp:&lt;4} FN={fn:&lt;4} TN={tn}&quot;)
+
+
+def test_evaluation():
+    # a balanced toy case: perfect predictions must give all 1.000
+    truth = [1, 0, 1, 0]
+    pred = [1, 0, 1, 0]
+    tp, fp, fn, tn = confusion(truth, pred)
+    assert (tp, fp, fn, tn) == (2, 0, 0, 2)
+    acc, prec, rec, f1 = report(&quot;toy perfect&quot;, truth, pred)
+    assert acc == 1.0 and prec == 1.0 and rec == 1.0 and f1 == 1.0
+    print(&quot;self-test: ok&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    test_evaluation()
+    data = make_data(seed=7, n=1000, pos_rate=0.05)   # only ~5% positives
+    truth = [y for _, y in data]
+    print(f&quot;positives in the data: {sum(truth)}/1000&quot;)
+    print()
+    report(&quot;always-negative&quot;, truth, always_negative(data))
+    report(&quot;threshold x&gt;1.5&quot;, truth, threshold_model(data, 1.5))
+    report(&quot;threshold x&gt;0.5&quot;, truth, threshold_model(data, 0.5))</code></pre>
+<p>Real output:</p>
+<pre><code>toy perfect          acc=1.000  prec=1.000  recall=1.000  f1=1.000
+                     TP=2    FP=0    FN=0    TN=2
+self-test: ok
+positives in the data: 68/1000
+
+always-negative      acc=0.932  prec=0.000  recall=0.000  f1=0.000
+                     TP=0    FP=0    FN=68   TN=932
+threshold x&gt;1.5      acc=0.888  prec=0.225  recall=0.265  f1=0.243
+                     TP=18   FP=62   FN=50   TN=870
+threshold x&gt;0.5      acc=0.683  prec=0.124  recall=0.603  f1=0.206
+                     TP=41   FP=290  FN=27   TN=642</code></pre>
+<p><strong>What I understood from it:</strong> the do-nothing model is the whole lesson. It</p>
+<p>scores <strong>0.932 accuracy</strong> and its recall is <strong>0.000</strong> — it never found a single</p>
+<p>one of the 68 positives, and the number I used to trust called that &quot;93%&quot;.</p>
+<p>Precision and recall are not extra credit; they are the two halves accuracy</p>
+<p>throws away, and on lopsided data throwing them away is the entire error. The</p>
+<p>second thing I did not expect: pushing the threshold down (<code>x&gt;0.5</code>) <em>lowers</em></p>
+<p>accuracy to 0.683 while raising recall to 0.603. The &quot;worse&quot; model by accuracy</p>
+<p>is the only one that actually catches cases. Which one is right depends on what</p>
+<p>a miss costs — a question the single number cannot even ask.</p>
+<p>---</p>
+<h2>Security #15 — Mass assignment: a form that trusts every field in the body (CWE-915)</h2>
+<p>Every earlier bug today lived in <em>parsing</em> — a path, a query, a template, an</p>
+<p>archive name. This one lives in <strong>trust</strong>, and it needs no clever payload at</p>
+<p>all. It is called <strong>mass assignment</strong> (over-posting), and it is the bug where a</p>
+<p>handler takes the request body and copies <em>every field in it</em> straight onto the</p>
+<p>record, instead of only the fields it meant to expose.</p>
+<p>A signup or profile-update form shows the user three fields: username, email,</p>
+<p>bio. The defender&#x27;s mental model is &quot;the client sends exactly those three&quot;. But</p>
+<p>the client is the attacker, and the attacker simply <strong>adds a fourth key</strong> the</p>
+<p>form never showed — <code>&quot;is_admin&quot;: true</code>. The server&#x27;s code does</p>
+<p><code>user.update(payload)</code> (or the framework equivalent), which merges the <em>whole</em></p>
+<p>body in, and the account is created as an administrator. Nothing was injected,</p>
+<p>no string was escaped badly, no file was traversed — the code did exactly what</p>
+<p>it was told with a field it never expected to receive.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code># VULNERABLE: accept the whole body, trusting the client to send only safe keys
+user.update(request_body)      # body adds {&quot;is_admin&quot;: true} -&gt; attacker is admin</code></pre>
+<p><strong>What I understood about preventing it:</strong> the fix is not to strip a list of</p>
+<p>bad keys — that is a blocklist and it loses to the next field the attacker</p>
+<p>invents. The fix is the opposite direction: define the set of fields the action</p>
+<p>is <strong>allowed</strong> to set, and keep only those. An allowlist the attacker cannot</p>
+<p>extend, because anything not on it is simply dropped.</p>
+<pre><code># FIXED: only the keys the form is meant to expose survive
+safe = {k: v for k, v in request_body.items() if k in ALLOWED_FIELDS}
+user.update(safe)              # {&quot;is_admin&quot;: true} is dropped -&gt; stays False</code></pre>
+<p>Sandbox check (local only, no network, no real system):</p>
+<pre><code>self-test: ok
+[vulnerable] is_admin=True  keys=[&#x27;bio&#x27;, &#x27;email&#x27;, &#x27;is_admin&#x27;, &#x27;username&#x27;]
+[fixed] is_admin=False  keys=[&#x27;bio&#x27;, &#x27;email&#x27;, &#x27;is_admin&#x27;, &#x27;username&#x27;]</code></pre>
+<p><strong>What I understood:</strong> the vulnerable record and the fixed record end up with</p>
+<p>the <em>same set of keys</em> — <code>is_admin</code> is present in both. The only difference is</p>
+<p>its <strong>value</strong>, and that is the quiet part: the defence is not &quot;is_admin is</p>
+<p>missing from the record&quot;, it is &quot;is_admin was never allowed to become True&quot;.</p>
+<p>Any place where a request body is folded into a stored object needs an explicit</p>
+<p>allowlist of assignable fields. Trusting the client&#x27;s shape is the bug; the</p>
+<p>shape the attacker chooses is the exploit.</p>
+<p>---</p>
+<h2>Day 15 notes</h2>
+<ul><li>Concept #15: evaluation metrics code ran, output above (accuracy vs precision/recall shown). ✔</li><li>Security #15: mass assignment reproduced, then blocked, in a /tmp sandbox only. ✔</li><li>1585 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 015 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

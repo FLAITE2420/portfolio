@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 010 — Many weak trees outvote one confident tree · Matías Rathgeb</title>
+<meta name="description" content="Day 010 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 010 OF 1600 · 2026-09-22</p>
+    <h1>Day 010 — Many weak trees outvote one confident tree</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-09-22 · <strong>Day:</strong> 10 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #10 — Random forests: why a crowd of shallow trees beats one deep tree</h2>
+<p>Yesterday I taught a single tree to choose its own questions, and it still only</p>
+<p>scored 8/10 on its own training rows. Today I learned the next step, and it is</p>
+<p>almost embarrassingly simple: **do not trust one tree, grow many and let them</p>
+<p>vote.**</p>
+<p>The course (MA01, Week 8 — <em>Bagging / Random Forest</em>) calls the first half</p>
+<p><strong>bagging</strong>. You take the training set, draw a new sample of the <em>same size</em> by</p>
+<p>picking rows <strong>with replacement</strong> (a bootstrap sample), and grow a tree on it.</p>
+<p>Some rows appear twice, some not at all — so each tree sees a slightly different</p>
+<p>world. Do that 20 times, get 20 different trees. For a classification answer,</p>
+<p>take the <strong>mode</strong> of their votes, not the mean.</p>
+<p>Why does a crowd beat the best member? A single deep tree is flexible enough to</p>
+<p><strong>memorise the noise</strong> — the 30% of labels here that are just flipped and</p>
+<p>unlearnable. It scores beautifully on the rows it saw and badly on the rows it</p>
+<p>did not. Bagging does not make each tree smarter; it makes the <em>errors</em> each</p>
+<p>tree makes <strong>less alike</strong>, and when you take a majority vote the random</p>
+<p>mistakes cancel out. The signal is shared by every tree, the noise is not.</p>
+<p><strong>What I tried today:</strong> I grew one deep tree (depth 8) and a forest of 20</p>
+<p>shallow trees (depth 4), each on its own bootstrap sample, on data with 30%</p>
+<p>label noise, and scored both on a test split they never saw. I repeated it over</p>
+<p>6 datasets and averaged, so one lucky split could not fool me.</p>
+<pre><code>#!/usr/bin/env python3
+# random_forest.py - bag many small trees and let them vote.
+# MA01 (Machine Learning), Week 8 &quot;Bagging / Random Forest&quot;. Pure stdlib.
+import random
+from collections import Counter
+
+def gini(labels):
+    &quot;&quot;&quot;Impurity of a bag of labels: 0 = pure, higher = mixed.&quot;&quot;&quot;
+    n = len(labels)
+    if n == 0:
+        return 0.0
+    c = Counter(labels)
+    return 1.0 - sum((v / n) ** 2 for v in c.values())
+
+def best_split(rows):
+    &quot;&quot;&quot;(feature_index, threshold) of the split that lowers Gini the most.&quot;&quot;&quot;
+    best = None
+    for fi in range(2):
+        vals = sorted({r[fi] for r in rows})
+        for i in range(len(vals) - 1):
+            thr = (vals[i] + vals[i + 1]) / 2
+            left = [r[-1] for r in rows if r[fi] &lt;= thr]
+            right = [r[-1] for r in rows if r[fi] &gt; thr]
+            if not left or not right:
+                continue
+            score = (len(left)/len(rows))*gini(left) + (len(right)/len(rows))*gini(right)
+            if best is None or score &lt; best[2]:
+                best = (fi, thr, score)
+    return best
+
+def build_tree(rows, depth, max_depth):
+    labels = [r[-1] for r in rows]
+    if depth &gt;= max_depth or len(set(labels)) == 1 or len(rows) &lt; 4:
+        return Counter(labels).most_common(1)[0][0]        # leaf = majority class
+    b = best_split(rows)
+    if b is None:
+        return Counter(labels).most_common(1)[0][0]
+    fi, thr, _ = b
+    left = [r for r in rows if r[fi] &lt;= thr]
+    right = [r for r in rows if r[fi] &gt; thr]
+    if not left or not right:
+        return Counter(labels).most_common(1)[0][0]
+    return (fi, thr, build_tree(left, depth+1, max_depth),
+            build_tree(right, depth+1, max_depth))
+
+def predict(tree, row):
+    while isinstance(tree, tuple):
+        fi, thr, left, right = tree
+        tree = left if row[fi] &lt;= thr else right
+    return tree
+
+def forest_predict(forest, row):
+    return Counter(predict(t, row) for t in forest).most_common(1)[0][0]
+
+def make_data(seed, n, noise):
+    rnd = random.Random(seed)
+    rows = []
+    for _ in range(n):
+        x, y = rnd.random(), rnd.random()
+        label = 1 if (x + y) &gt; 1.0 else 0            # the real rule
+        if rnd.random() &lt; noise:                     # the noise we cannot learn
+            label = 1 - label
+        rows.append((x, y, label))
+    return rows
+
+NOISE, SEEDS, NTREES, FDEPTH = 0.30, 6, 20, 4
+single_te, single_tr, forest_te, forest_tr = [], [], [], []
+first_example = None
+
+for s in range(SEEDS):
+    rows = make_data(1000 + s, 240, NOISE)
+    rnd = random.Random(s)
+    rnd.shuffle(rows)
+    train, test = rows[:180], rows[180:]
+
+    tree = build_tree(train, 0, 8)                    # one deep, flexible tree
+    forest = [build_tree([rnd.choice(train) for _ in range(len(train))], 0, FDEPTH)
+              for _ in range(NTREES)]                 # each on its own bootstrap sample
+
+    single_tr.append(sum(1 for r in train if predict(tree, r) == r[-1]) / len(train))
+    single_te.append(sum(1 for r in test  if predict(tree, r) == r[-1]) / len(test))
+    forest_tr.append(sum(1 for r in train if forest_predict(forest, r) == r[-1]) / len(train))
+    forest_te.append(sum(1 for r in test  if forest_predict(forest, r) == r[-1]) / len(test))
+
+    if s == 0:
+        row = test[0]
+        votes = Counter(predict(t, row) for t in forest)
+        first_example = (row, votes)
+
+avg = lambda xs: sum(xs) / len(xs)
+print(f&quot;{SEEDS} datasets, 180 train / 60 test, {NOISE:.0%} label noise, averaged:&quot;)
+print(f&quot;Single deep tree (depth 8)   train {avg(single_tr):.3f}   test {avg(single_te):.3f}&quot;
+      f&quot;   train-test gap {avg(single_tr)-avg(single_te):.3f}&quot;)
+print(f&quot;Forest of {NTREES} trees (depth {FDEPTH})  train {avg(forest_tr):.3f}   test {avg(forest_te):.3f}&quot;
+      f&quot;   train-test gap {avg(forest_tr)-avg(forest_te):.3f}&quot;)
+
+row, votes = first_example
+print(f&quot;\nOne test row from set 0: features ({row[0]:.3f}, {row[1]:.3f}), true label {row[-1]}&quot;)
+print(f&quot;the {NTREES} trees voted: {dict(votes)}  -&gt; forest says {votes.most_common(1)[0][0]}&quot;)</code></pre>
+<p>Real output (<code>python3 random_forest.py</code>, Python 3.11.15):</p>
+<pre><code>6 datasets, 180 train / 60 test, 30% label noise, averaged:
+Single deep tree (depth 8)   train 0.909   test 0.581   train-test gap 0.329
+Forest of 20 trees (depth 4)  train 0.802   test 0.639   train-test gap 0.163
+
+One test row from set 0: features (0.453, 0.515), true label 0
+the 20 trees voted: {0: 12, 1: 8}  -&gt; forest says 0</code></pre>
+<p><strong>What I understood from it:</strong> the deep tree looks amazing on the rows it</p>
+<p>learned from — 0.909 — and then falls to 0.581 on rows it never saw. That</p>
+<p>0.329 gap is day 8&#x27;s overfitting again, and it is the whole reason the forest</p>
+<p>exists. The forest is <em>worse on the training set</em> (0.802) and **better on the</p>
+<p>test set** (0.639). Its gap is half the tree&#x27;s — 0.163 instead of 0.329 —</p>
+<p>because it cannot memorise any one version of the noise; the vote pushes it</p>
+<p>back toward the shared signal. Lower training accuracy is the price, and it is</p>
+<p>the right trade. The single test row is the honest picture: the trees did not</p>
+<p>unanimously agree, they split 12 to 8, and the majority happened to be right</p>
+<p>here. A forest is not certainty — it is a crowd whose random mistakes cancel</p>
+<p>more often than they stack.</p>
+<p>---</p>
+<h2>Security #10 — Time-of-check to time-of-use race condition (TOCTOU, CWE-367)</h2>
+<p><strong>What I learned about this topic — contained, sandbox only, no live targets:</strong></p>
+<p>Every injection class I studied earlier (path traversal, SQLi, SSTI) was about</p>
+<p><em>one</em> request being misinterpreted. This one is different: it is about **two</p>
+<p>requests arriving at the same time**, and the bug is the tiny gap in between</p>
+<p>them. <strong>CWE-367</strong>, time-of-check to time-of-use.</p>
+<p>The shape is always the same. Code asks a question, and <em>then</em>, a moment later,</p>
+<p>acts on the answer:</p>
+<p>    if balance &gt;= 30:      # TIME OF CHECK</p>
+<p>        ... do work ...    # the window</p>
+<p>        balance -= 30      # TIME OF USE</p>
+<p>The check and the use are <strong>not one operation</strong>. Between them, another request</p>
+<p>can run the exact same check and get the exact same answer — because nothing has</p>
+<p>changed yet. Both requests were <em>told</em> there was enough money. Both then spend</p>
+<p>it. This is the same bug family as a database&#x27;s lost update and a file&#x27;s</p>
+<p>check-then-open (the classic <code>/tmp</code> symlink swap); the abstract name is a</p>
+<p><strong>TOCTOU race</strong>, and the consequence is broken invariants: a bank balance below</p>
+<p>zero, a coupon used twice, a limit bypassed by firing requests in parallel.</p>
+<p>I reproduced it in my own sandbox (/tmp): eight threads share a balance of 100</p>
+<p>and each tries to withdraw 30. There is no network and no real account — just</p>
+<p>Python threads and a global number. Then I fixed it and ran the identical load.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code># VULNERABLE: check and use are two separate steps with a gap between them
+if balance &gt;= WITHDRAW:          # &lt;-- CHECK
+    time.sleep(0.01)             # &lt;-- WINDOW: another thread re-reads the same balance
+    balance -= WITHDRAW          # &lt;-- USE: the check is already stale
+# 8 threads pass the check before any of them spends -&gt; balance goes negative</code></pre>
+<p><strong>What I understood about preventing it:</strong></p>
+<pre><code># SAFE: make check + use ONE indivisible critical section
+with lock:
+    if balance &gt;= WITHDRAW:      # check
+        balance -= WITHDRAW      # use -- nothing can run in between
+# no gap means no window: later threads either see the updated balance and are
+# refused, or they wait. Atomicity, not a bigger check.</code></pre>
+<p>Sandbox check (local only, /tmp, threads only, no network):</p>
+<pre><code>$ python3 toctou.py
+[vulnerable] start=100, each takes 30, 8 threads race
+[vulnerable] final balance = -140   (an overdraft that must be impossible)
+[fixed]      final balance = 10   honoured 3/8 withdrawals, rest correctly refused</code></pre>
+<p><strong>What I understood:</strong> the vulnerable run ends at <strong>-140</strong>. A balance that</p>
+<p>should never dip below zero is deeply negative, because all eight threads read</p>
+<p>the same stale &quot;100&quot; before any of them wrote. Nothing was hacked and no input</p>
+<p>was even malformed — the code was simply wrong the moment two callers overlapped.</p>
+<p>The fix is not a stronger check; a stronger check in the same place would fail</p>
+<p>the same way. The fix is to <strong>close the gap</strong>: hold a lock across check <em>and</em></p>
+<p>use so no other thread can slip in. With the lock, three withdrawals go through</p>
+<p>and the other five are correctly refused — the invariant holds. The lesson</p>
+<p>that finally clicked: some bugs are not about <em>what</em> the code does, but about</p>
+<p><strong>when</strong> it does it. Correctness under concurrency has to be designed, because</p>
+<p>under single calls this code looks perfectly fine.</p>
+<p>---</p>
+<h2>Day 10 notes</h2>
+<ul><li>Concept #10: random-forest bagging — deep tree test 0.581 (gap 0.329), 20-tree forest test 0.639 (gap 0.163). ✔</li><li>Security #10: TOCTOU race (CWE-367) — vulnerable balance -140, fixed balance 10. ✔</li><li>1590 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 010 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>

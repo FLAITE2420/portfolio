@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 024 — A server at 90% is already late, and a digest is not a signature · Matías Rathgeb</title>
+<meta name="description" content="Day 024 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 024 OF 1600 · 2026-10-24</p>
+    <h1>Day 024 — A server at 90% is already late, and a digest is not a signature</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-10-24 · <strong>Day:</strong> 24 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #24 — Utilization is a wall, not a slope (Little&#x27;s law and the mean that hides the queue)</h2>
+<p>MA03, week 4: Scaling &amp; Databases. The sentence that stuck with me is the one</p>
+<p>everybody says in a standup — <em>&quot;we&#x27;re at 90% CPU, we&#x27;re fine, we have room&quot;</em>. Both</p>
+<p>halves of that sentence are wrong, and the second half is the expensive one.</p>
+<p>The reason is not a library detail, it is one line of queueing theory. For a</p>
+<p>single worker with service time <code>S</code> running at utilization <code>ρ</code> (0 &lt; ρ &lt; 1), the</p>
+<p>average time a request <em>waits before service</em> is:</p>
+<pre><code>Wq = ρ · S / (1 - ρ)</code></pre>
+<p>Look at what that says. Going from 50% to 80% costs 4× the wait. Going from 80%</p>
+<p>to 90% costs another 2.25×, and 90% to 95% doubles it again. The work never</p>
+<p>changed — the request still needs the same one second of CPU. What changed is how</p>
+<p>much of the time the worker was busy and therefore how long the <em>next</em> arrival</p>
+<p>has to stand in line. At 98% the queue is 49× the work.</p>
+<p>The second half of the sentence — &quot;we have room&quot; — belongs to whoever scales on</p>
+<p>average latency. The average is the one number the queue never lets you see.</p>
+<p>Little&#x27;s law gives the bridge: <code>L = λ · W</code>, the time-average number of requests</p>
+<p>in the system equals arrival rate times mean time in system.</p>
+<p><strong>What I tried today:</strong> one worker, FIFO, exponential service times, Poisson</p>
+<p>arrivals — a discrete event simulation in stdlib only, 40 000 requests per row,</p>
+<p>five utilizations. I measure the wait of every request, its p50/p95/p99, and the</p>
+<p>time-average occupancy <code>L</code> by integrating the occupancy curve over the whole run,</p>
+<p>then compare that <code>L</code> against <code>λ · E[T]</code> from Little&#x27;s law. The theory column is</p>
+<p>computed separately from the simulation, so agreement is a check and not a</p>
+<p>tautology.</p>
+<pre><code># queue.py - MA03 (AI-Ops, week 4: Scaling &amp; Databases).
+# Why a server at 90% CPU is not &quot;almost ready for one more request&quot;:
+# utilization is a wall, not a slope. One worker, FIFO, exponential service.
+import math, random
+
+SERVICE = 1.0  # seconds of work per request, fixed so the numbers are readable
+
+def simulate(rho, n, seed):
+    rng = random.Random(seed)
+    lam = rho / SERVICE
+    arrivals, t = [], 0.0
+    for _ in range(n):
+        t += rng.expovariate(lam)
+        arrivals.append(t)
+
+    waits, in_sys, events = [], [], []
+    free_at = 0.0
+    for a in arrivals:
+        s = rng.expovariate(1.0 / SERVICE)
+        start = max(a, free_at)          # FIFO single server: never preempt
+        dep = start + s
+        free_at = dep
+        waits.append(start - a)
+        in_sys.append(dep - a)
+        events.append((a, 1))
+        events.append((dep, -1))
+
+    # time-average number in the system, by integrating the occupancy curve
+    events.sort()
+    area, occ, prev = 0.0, 0, events[0][0]
+    for tm, d in events:
+        area += occ * (tm - prev)
+        prev, occ = tm, occ + d
+    T = events[-1][0] - events[0][0]
+    L_sweep = area / T
+    L_little = lam * (sum(in_sys) / len(in_sys))
+    return waits, L_sweep, L_little, lam
+
+def pct(sorted_vals, q):
+    idx = min(len(sorted_vals) - 1, math.ceil(q * len(sorted_vals)) - 1)
+    return sorted_vals[max(idx, 0)]
+
+print(&quot;one worker, service time 1.000 s, 40000 requests per row, FIFO&quot;)
+print()
+print(&quot; util   mean wait  theory Wq   p50    p95     p99    L(sweep) L(little)&quot;)
+for rho in (0.50, 0.80, 0.90, 0.95, 0.98):
+    waits, L_sweep, L_little, lam = simulate(rho, 40000, seed=int(rho * 1000))
+    w = sorted(waits)
+    theory = rho * SERVICE / (1 - rho)
+    print(f&quot;{rho:5.2f} {sum(waits)/len(waits):10.3f} {theory:10.3f} &quot;
+          f&quot;{pct(w,.50):6.3f} {pct(w,.95):7.3f} {pct(w,.99):7.3f} &quot;
+          f&quot;{L_sweep:9.3f} {L_little:9.3f}&quot;)
+
+print()
+print(&quot;read the last column pair: Little&#x27;s law L = lambda * E[T] holds in every row.&quot;)
+print(&quot;read the p95 column: it grows much faster than the mean, and the mean grows&quot;)
+print(&quot;much faster than the work. The job is the same one second in all five rows.&quot;)</code></pre>
+<p>Real output (Python 3, this session):</p>
+<pre><code>one worker, service time 1.000 s, 40000 requests per row, FIFO
+
+ util   mean wait  theory Wq   p50    p95     p99    L(sweep) L(little)
+ 0.50      1.026      1.000  0.012   4.709   7.971     1.016     1.017
+ 0.80      3.841      4.000  2.329  13.292  20.683     3.882     3.869
+ 0.90      9.688      9.000  6.228  33.277  45.031     9.640     9.626
+ 0.95     18.381     19.000 12.916  53.082  70.742    18.379    18.412
+ 0.98     36.151     49.000 29.851  90.162 123.251    36.458    36.411
+
+read the last column pair: Little&#x27;s law L = lambda * E[T] holds in every row.
+read the p95 column: it grows much faster than the mean, and the mean grows
+much faster than the work. The job is the same one second in all five rows.</code></pre>
+<p>Then the row I did not believe, so I re-ran it — the 0.98 mean is unstable at</p>
+<p>40 000 requests, and I wanted to know in which direction:</p>
+<pre><code>n=  40000  rho=0.98  mean wait = 48.9, 53.7, 31.1   theory 49.0
+n= 200000  rho=0.98  mean wait = 40.1, 51.9, 66.9   theory 49.0
+n=1000000  rho=0.98  mean wait = 46.8, 52.2, 56.3   theory 49.0</code></pre>
+<p><strong>What I understood from it:</strong> four things.</p>
+<p>First, the mean wait is a tail wearing a disguise. At 50% utilization the median</p>
+<p>wait is 0.012 s — half the requests walk straight in because the worker is idle</p>
+<p>half the time — while the mean is 1.0 s. Nobody experiences the mean. If the</p>
+<p>dashboard shows the mean and the users report slowness, both can be honest: the</p>
+<p>mean is dragged by the 5% who waited 4.7 s.</p>
+<p>Second, the p95 column is the one that scales. Same job in every row: 1.000 s.</p>
+<p>The p95 moves 4.7 → 53.1 s between 50% and 95% utilization: an 11× regression with</p>
+<p>zero code changes and zero traffic growth, just less headroom. From 90% to 95%,</p>
+<p>the last 5 points of utilization cost 20 extra seconds of p95 wait. That is the</p>
+<p>number to keep out of, and it is why &quot;we can still add one more customer&quot; is a</p>
+<p>sentence that ends in an incident.</p>
+<p>Third, my single run at 0.98 said 36.2 s while the formula says 49.0 s — I had a</p>
+<p>17% error and it pointed the <em>reassuring</em> way. Three seeds at 40 000 requests:</p>
+<p>48.9, 53.7, 31.1. One draw said &quot;there is no problem here&quot;. The estimator is</p>
+<p>honest only in the limit, and a production dashboard is one draw. So: measure the</p>
+<p>p95 over a window long enough to contain a full busy period, or don&#x27;t quote it.</p>
+<p>Fourth, Little&#x27;s law held in every row (36.458 vs 36.411 at 0.98 — that is the</p>
+<p>integration and the identity agreeing), and that is exactly why it is not a</p>
+<p>validation. It is a conservation identity: it holds for the queue you measured,</p>
+<p>right or wrong. It tells me how many requests are in flight; it says nothing</p>
+<p>about whether that is acceptable. Agreement with Little&#x27;s law is the minimum</p>
+<p>bar, not a pass.</p>
+<p>Honest limit: this is M/M/1 — exponential service, memoryless arrivals, one</p>
+<p>worker, no retries, no timeouts. Real services have bursts and clients that give</p>
+<p>up, so the picture gets <em>worse</em>, not better. And the fix I did not test today is</p>
+<p>the interesting half: with <code>c</code> workers the wait collapses much faster than <code>c</code></p>
+<p>(the Erlang C form), which is the whole argument for horizontal scaling — I want</p>
+<p>to run that next rather than assert it.</p>
+<p>---</p>
+<h2>Security #24 — A digest is a checkpoint, not a signature: length extension on a secret-prefix MAC (CWE-354)</h2>
+<p>Twenty-three classes. This one is not a parser disagreement — it is the shape of</p>
+<p>the hash function itself being used as if it were a signature.</p>
+<p>The bug is one line that looks completely reasonable:</p>
+<pre><code>mac = sha256(SECRET + message)</code></pre>
+<p>and the token is <code>message + &quot;.&quot; + mac</code>. The server recomputes it and compares.</p>
+<p>No timing leak, no weak secret, no crypto library misuse. It still breaks, for a</p>
+<p>reason that has nothing to do with secrecy and everything to do with how</p>
+<p>SHA-256 is built.</p>
+<p>SHA-256 is Merkle–Damgård: it eats the message in 64-byte blocks and carries a</p>
+<p>256-bit state from block to block. The padding — <code>0x80</code>, zeros, then the message</p>
+<p><em>length in bits</em> — is appended by the hash, not by the caller. Two consequences</p>
+<p>that combine into the attack:</p>
+<p>1. The published digest <strong>is the internal state</strong> after the last block.</p>
+<p>2. The padding depends <strong>only on the length</strong>, never on the content.</p>
+<p>So anyone holding <code>sha256(SECRET || message)</code> holds a checkpoint, and can resume</p>
+<p>the compression from that checkpoint with whatever bytes they want — provided</p>
+<p>they know how many bytes <code>SECRET</code> has. The new message is</p>
+<p><code>message || padding || attacker_tail</code>, and the digest of</p>
+<p><code>SECRET || message || padding || attacker_tail</code> is computable *without the</p>
+<p>secret*, because those first bytes are exactly the padding the server was going</p>
+<p>to apply anyway. The padding travels inside the message as if it were data.</p>
+<p><strong>The pattern I studied</strong> — the pieces of the sandbox that matter:</p>
+<pre><code># the bug
+def mac_prefix(msg):
+    return sha256(SECRET + msg)          # SECRET never leaves the server
+
+# the only thing the attacker needs: the padding function is deterministic
+def pad64(mlen):                          # what SHA-256 appends to mlen bytes
+    return b&quot;\x80&quot; + b&quot;\x00&quot; * ((56 - (mlen + 1) % 64) % 64) + (mlen * 8).to_bytes(8, &quot;big&quot;)
+
+# resume a hash from a digest, knowing only how many bytes it already absorbed
+def sha256(msg, state=None, absorbed=0):
+    st = list(H0) if state is None else list(state)
+    total = len(msg) if state is None else absorbed + len(pad64(absorbed)) + len(msg)
+    data = msg + pad64(total)
+    for i in range(0, len(data), 64):
+        st = compress(st, data[i:i + 64])
+    return b&quot;&quot;.join(x.to_bytes(4, &quot;big&quot;) for x in st)
+
+# the attack: digest -&gt; state, glue = pad64(guess + len(msg)), send msg + glue + tail
+state = [int.from_bytes(digest[i:i + 4], &quot;big&quot;) for i in range(0, 32, 4)]
+for guess in range(1, 41):                        # only the *length* is unknown
+    glue = pad64(guess + len(msg))
+    forged_mac = sha256(b&quot;&amp;role=admin&quot;, state=state, absorbed=guess + len(msg))
+    send(msg + glue + b&quot;&amp;role=admin&quot;, forged_mac)</code></pre>
+<p>The lengths are the whole story: <code>absorbed = len(guess_secret) + len(msg)</code>, and</p>
+<p>the loop is just the key length being unknown. Guessing wrong produces a valid</p>
+<p>digest for a message the server never hashed, so it fails — and that failure is</p>
+<p>itself the oracle that reveals the length.</p>
+<p><strong>What I understood about preventing it:</strong> stop composing <code>hash(secret ‖ data)</code></p>
+<p>by hand. Two constructions are immune: one that wraps the secret <em>around</em> the</p>
+<p>message (HMAC absorbs the inner hash before finishing), and any hash that is not</p>
+<p>Merkle–Damgård (SHA-3). The cheapest correct fix is the one from the standard</p>
+<p>library:</p>
+<pre><code>import hmac, hashlib
+
+def mac_hmac(msg):
+    return hmac.new(SECRET, msg, hashlib.sha256).digest()
+
+# and always compare in constant time
+if not hmac.compare_digest(mac_hmac(msg), received):
+    return 403</code></pre>
+<p><code>compare_digest</code> is there for the other bug — the one that leaks the MAC byte by</p>
+<p>byte — not for this one. Both belong in the same two lines.</p>
+<p>Sandbox check (my own SHA-256 in stdlib, two local servers, 127.0.0.1, both</p>
+<p>stopped at the end):</p>
+<pre><code>self-test sha256(&#x27;abc&#x27;) = ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+          hashlib       = ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad   match
+self-test K[0] = 428a2f98 (expected 428a2f98), 64 constants derived from primes
+
+[VULN] 127.0.0.1:8741   MAC = sha256(SECRET || message)   secret = 24 bytes, never sent
+   legit token, role=user   -&gt; 200 public: 1 file
+   token seen by the client: 757365723d67756573742672...5d1257b11cc70d13
+   forged, no secret, 24 oracle calls -&gt; key length 24, 200 ADMIN EXPORT: full ledger (3 files)
+   forged digest: 06607670c0d3dd317248bd16c94ca483...
+   forged bytes inside the message: 80 00 00 ... (SHA-256 padding, sent as if it were data)
+
+[FIX]  127.0.0.1:8742   MAC = HMAC-SHA256(SECRET, message)
+   same 40 forgeries          -&gt; 40/40 rejected (403 bad signature)
+   legit token, role=user     -&gt; 200 public: 1 file
+
+both sandbox servers stopped, ports 8741/8742 closed</code></pre>
+<p><strong>What I understood:</strong> the primitive was never the problem. SHA-256 did exactly</p>
+<p>what it promises — it condensed <code>SECRET || message</code> into 256 bits, and it did so</p>
+<p><em>incrementally</em>. I was the one who read a checkpoint as a signature. A MAC has to</p>
+<p>be a function of the whole message in a way that cannot be extended; <code>sha256(S || m)</code></p>
+<p>is a function of a <em>prefix</em>, and prefix functions can be continued by definition.</p>
+<p>The honest part: the key length had to be guessed, and my demo had a perfect</p>
+<p>oracle — 24 requests, one hit, because the loop simply tried 1..40 in order. In</p>
+<p>the field that costs a few hundred requests, or nothing at all if the length is</p>
+<p>public. The real-world instances (Flickr&#x27;s API signature, ASP.NET ViewState) were</p>
+<p>not exotic; they were this exact line, in code that passed review.</p>
+<p>The second honest part: my implementation validated itself against <code>hashlib</code></p>
+<p>before the attack ran — same digest for <code>b&quot;&quot;</code>, <code>b&quot;abc&quot;</code>, and 1000 bytes. If it had</p>
+<p>been wrong, the forgery would have &quot;failed&quot; and I might have believed the bug was</p>
+<p>not there. A broken attack proves nothing, which is why the self-test is printed</p>
+<p>above the results and not in a notebook somewhere.</p>
+<p>---</p>
+<h2>Day 24 notes</h2>
+<ul><li>Concept #24: 5 utilizations simulated, Little&#x27;s law checked against the integration, output above. ✔</li><li>Security #24: SHA-256 written from scratch, forgery accepted on the vulnerable server, 40/40 rejected on the HMAC one. Sandbox only. ✔</li><li>1576 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 024 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>
