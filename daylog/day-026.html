@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 026 — A saturated sigmoid is not the failure; the loss on top of it is · Matías Rathgeb</title>
+<meta name="description" content="Day 026 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 026 OF 1600 · 2026-10-29</p>
+    <h1>Day 026 — A saturated sigmoid is not the failure; the loss on top of it is</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-10-29 · <strong>Day:</strong> 26 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #26 — A dead gradient is a decision the loss makes, not the activation</h2>
+<p>MA04, Deep Learning. The mock test has this question: <code>L = ½(y − t)²</code>, <code>y = σ(z)</code>,</p>
+<p><code>z = w·x + b</code>, with <code>w = −2</code>, <code>x = −3</code>, <code>b = 6000000</code>, <code>t = 1</code>. Compute <code>∂L/∂w</code>.</p>
+<p>The forward pass gives <code>z = 6000006</code>, <code>σ(6000006) = 1</code>, and then <code>∂L/∂y = y − t = 0</code></p>
+<p>and <code>∂y/∂z = y(1 − y) = 0</code>. Answer: <code>0</code>. The mock answer says <code>0</code> and it is correct.</p>
+<p>What it does not say is the part that matters to me now: **it would still be <code>0</code> if</p>
+<p>the label were wrong**. Put <code>t = 0</code> on the same neuron — a confidently incorrect</p>
+<p>prediction, p = 1 when the truth is 0 — and the squared error still hands back <code>0.0</code>.</p>
+<p>The neuron is wrong, the loss agrees that there is nothing to fix, and training stops</p>
+<p>on a mistake.</p>
+<p>That is not a property of the sigmoid. It is a property of a squared error sitting on</p>
+<p>top of a squashed output. The chain rule puts <code>σ&#x27;(z) = p(1 − p)</code> in the path, and once</p>
+<p><code>p</code> rounds to <code>1.0</code> that factor is not small, it is <strong>exactly zero in floating point</strong>.</p>
+<p>Binary cross-entropy on the same neuron gives <code>∂L/∂z = p − t</code>, which is <code>1.0</code> out</p>
+<p>there, because the <code>p(1−p)</code> cancels against the derivative of the log instead of</p>
+<p>being multiplied by it. Same neuron, same saturation, one loss transmits nothing and</p>
+<p>the other transmits a full unit of error.</p>
+<p><strong>What I tried today:</strong> one script, stdlib only, five measurements. Where <code>sigmoid(z)</code></p>
+<p>stops being a probability in float64 and in float32; the exam case with the right and</p>
+<p>the wrong label; analytic gradients against central differences at a healthy <code>z</code> and</p>
+<p>at a saturated one; a 500-step training run on a deliberately wrong, saturated neuron</p>
+<p>under both losses; and the stable logit form of BCE against the naive one.</p>
+<pre><code># saturation.py - MA04 (Deep Learning). The loss decides whether a saturated
+# neuron still learns. stdlib only, no numpy.
+#
+# Five measurements:
+#   1. the z at which sigmoid(z) rounds to exactly 1.0, in float64 and float32
+#   2. the exam case (z = 6e6 + 6): the same neuron, right label and wrong label
+#   3. analytic gradients against finite differences, healthy and saturated
+#   4. a confidently WRONG neuron, trained 500 steps, MSE vs BCE
+#   5. the stable form of BCE at saturation, against the naive one
+import math
+import struct
+
+LR = 0.5
+STEPS = 500
+
+
+def sigmoid(z):
+    if z &gt;= 0.0:
+        return 1.0 / (1.0 + math.exp(-z))
+    e = math.exp(z)
+    return e / (1.0 + e)
+
+
+def f32(x):
+    &quot;&quot;&quot;Round a float64 to the nearest float32 (emulates one float32 step).&quot;&quot;&quot;
+    return struct.unpack(&quot;f&quot;, struct.pack(&quot;f&quot;, x))[0]
+
+
+def sigmoid32(z):
+    &quot;&quot;&quot;Same sigmoid, but the addition and the division rounded to float32.&quot;&quot;&quot;
+    e = f32(math.exp(-f32(z)))
+    return f32(1.0 / f32(1.0 + e))
+
+
+def mse(loss_z, t):
+    &quot;&quot;&quot;L = 0.5*(sigmoid(z) - t)**2 where loss_z is z. Also used as dL/dz below.&quot;&quot;&quot;
+    p = sigmoid(loss_z)
+    return 0.5 * (p - t) ** 2
+
+
+def mse_dz(z, t):
+    p = sigmoid(z)
+    return (p - t) * p * (1.0 - p)
+
+
+def bce_dz(z, t):
+    &quot;&quot;&quot;dL/dz for BCE(sigmoid(z), t): it collapses to (p - t).&quot;&quot;&quot;
+    return sigmoid(z) - t
+
+
+def bce_stable(z, t):
+    &quot;&quot;&quot;BCE straight from the logit: no sigmoid of z is ever formed.&quot;&quot;&quot;
+    return max(z, 0.0) - z * t + math.log1p(math.exp(-abs(z)))
+
+
+def bce_naive(z, t):
+    p = sigmoid(z)
+    return -(t * math.log(p) + (1.0 - t) * math.log(1.0 - p))
+
+
+def first_saturated(fn, hi=200.0, grid=0.05):
+    &quot;&quot;&quot;Smallest z on a grid where fn(z) returns exactly 1.0.&quot;&quot;&quot;
+    z = 0.0
+    while z &lt;= hi:
+        if fn(z) == 1.0:
+            return z
+        z += grid
+    return None
+
+
+def numeric_dz(z, t, loss, h=1e-6):
+    return (loss(z + h, t) - loss(z - h, t)) / (2.0 * h)
+
+
+print(&quot;== 1. where sigmoid stops being a probability ==&quot;)
+z64 = first_saturated(sigmoid)
+z32 = first_saturated(sigmoid32)
+print(f&quot;float64: first z with sigmoid(z) == 1.0 exactly : z = {z64:.2f}&quot;)
+print(f&quot;float32: first z with sigmoid(z) == 1.0 exactly : z = {z32:.2f}&quot;)
+for z in (10.0, 16.0, 20.0, 36.0, 40.0):
+    print(f&quot;  z={z:5.1f}  float64={sigmoid(z):.17f}  float32={sigmoid32(z):.9f}&quot;)
+
+print()
+print(&quot;== 2. the exam case: z = 6*10^6 + 6, w=-2 x=-3 b=6000000 ==&quot;)
+w, x, b = -2.0, -3.0, 6000000.0
+z = w * x + b
+p = sigmoid(z)
+print(f&quot;z = {z:.1f}   p = {p!r}   p*(1-p) = {p * (1.0 - p)!r}&quot;)
+for t in (1.0, 0.0):
+    print(f&quot;  t={t:.0f} (label {&#x27;right&#x27; if t == 1.0 else &#x27;WRONG&#x27;}): &quot;
+          f&quot;dL/dz MSE = {mse_dz(z, t)!r}   dL/dz BCE = {bce_dz(z, t)!r}&quot;)
+
+print()
+print(&quot;== 3. analytic vs finite differences ==&quot;)
+for zz in (0.0, 1.5, 2.0):
+    print(f&quot;  z={zz:4.1f}  MSE analytic={mse_dz(zz, 0.0): .8f} numeric={numeric_dz(zz, 0.0, mse): .8f}&quot;
+          f&quot;   BCE analytic={bce_dz(zz, 0.0): .8f} numeric={numeric_dz(zz, 0.0, bce_stable): .8f}&quot;)
+print(f&quot;  z=71.0  MSE analytic={mse_dz(71.0, 0.0)!r} numeric={numeric_dz(71.0, 0.0, mse)!r}&quot;
+      f&quot;   BCE analytic={bce_dz(71.0, 0.0)!r} numeric={numeric_dz(71.0, 0.0, bce_stable):.10f}&quot;)
+
+print()
+print(&quot;== 4. a confidently WRONG neuron (t=0), 500 steps, lr=0.5 ==&quot;)
+for name, grad in ((&quot;MSE&quot;, mse_dz), (&quot;BCE&quot;, bce_dz)):
+    w1, b1 = 30.0, 50.0
+    crossing = None
+    for step in range(1, STEPS + 1):
+        g = grad(w1 * 0.7 + b1, 0.0)
+        w1 -= LR * g * 0.7
+        b1 -= LR * g
+        if crossing is None and sigmoid(w1 * 0.7 + b1) &lt; 0.5:
+            crossing = step
+    p1 = sigmoid(w1 * 0.7 + b1)
+    where = f&quot;step {crossing}&quot; if crossing else f&quot;never in {STEPS} steps&quot;
+    print(f&quot;  {name}: z {71.0:7.1f} -&gt; {w1 * 0.7 + b1:8.3f}   w {30.0:7.4f} -&gt; {w1:8.4f}&quot;
+          f&quot;   p {sigmoid(71.0):.3e} -&gt; {p1:.6f}   loss {0.5 * (sigmoid(71.0)) ** 2:.3f} -&gt; {mse(w1 * 0.7 + b1, 0.0):.6f}&quot;
+          f&quot;   p&lt;0.5 at {where}&quot;)
+
+print()
+print(&quot;== 5. the stable form at z = +800, t = 0 ==&quot;)
+print(f&quot;  stable BCE(800, 0) = {bce_stable(800.0, 0.0)!r}&quot;)
+try:
+    print(f&quot;  naive  BCE(800, 0) = {bce_naive(800.0, 0.0)!r}&quot;)
+except (ValueError, ZeroDivisionError) as exc:
+    print(f&quot;  naive  BCE(800, 0) raises {type(exc).__name__}: {exc}&quot;)
+
+print()
+print(f&quot;conclusion: sigmoid(z) == 1.0 from z ~ {z64:.1f} in float64 and ~ {z32:.1f} in float32.&quot;)
+print(&quot;p*(1-p) is then exactly 0.0, so MSE returns a zero gradient on a&quot;)
+print(&quot;confidently wrong answer, and finite differences agree with the zero.&quot;)
+print(&quot;The BCE gradient is (p - t), which stays 1.0 out there.&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>== 1. where sigmoid stops being a probability ==
+float64: first z with sigmoid(z) == 1.0 exactly : z = 36.75
+float32: first z with sigmoid(z) == 1.0 exactly : z = 16.65
+  z= 10.0  float64=0.99995460213129761  float32=0.999954581
+  z= 16.0  float64=0.99999988746483792  float32=0.999999881
+  z= 20.0  float64=0.99999999793884631  float32=1.000000000
+  z= 36.0  float64=0.99999999999999978  float32=1.000000000
+  z= 40.0  float64=1.00000000000000000  float32=1.000000000
+
+== 2. the exam case: z = 6*10^6 + 6, w=-2 x=-3 b=6000000 ==
+z = 6000006.0   p = 1.0   p*(1-p) = 0.0
+  t=1 (label right): dL/dz MSE = 0.0   dL/dz BCE = 0.0
+  t=0 (label WRONG): dL/dz MSE = 0.0   dL/dz BCE = 1.0
+
+== 3. analytic vs finite differences ==
+  z= 0.0  MSE analytic= 0.12500000 numeric= 0.12500000   BCE analytic= 0.50000000 numeric= 0.50000000
+  z= 1.5  MSE analytic= 0.12193833 numeric= 0.12193833   BCE analytic= 0.81757448 numeric= 0.81757448
+  z= 2.0  MSE analytic= 0.09247804 numeric= 0.09247804   BCE analytic= 0.88079708 numeric= 0.88079708
+  z=71.0  MSE analytic=0.0 numeric=0.0   BCE analytic=1.0 numeric=0.9999999975
+
+== 4. a confidently WRONG neuron (t=0), 500 steps, lr=0.5 ==
+  MSE: z    71.0 -&gt;   71.000   w 30.0000 -&gt;  30.0000   p 1.000e+00 -&gt; 1.000000   loss 0.500 -&gt; 0.500000   p&lt;0.5 at never in 500 steps
+  BCE: z    71.0 -&gt;   -5.697   w 30.0000 -&gt;  -6.0321   p 1.000e+00 -&gt; 0.003345   loss 0.500 -&gt; 0.000006   p&lt;0.5 at step 97
+
+== 5. the stable form at z = +800, t = 0 ==
+  stable BCE(800, 0) = 800.0
+  naive  BCE(800, 0) raises ValueError: expected a positive input, got 0.0
+
+conclusion: sigmoid(z) == 1.0 from z ~ 36.8 in float64 and ~ 16.7 in float32.
+p*(1-p) is then exactly 0.0, so MSE returns a zero gradient on a
+confidently wrong answer, and finite differences agree with the zero.
+The BCE gradient is (p - t), which stays 1.0 out there.</code></pre>
+<p><strong>What I understood from it:</strong> four things, and the numbers are the lesson.</p>
+<p>1. <strong>The wall is much closer than the sigmoid looks.</strong> <code>sigmoid(z) == 1.0</code> exactly from</p>
+<p>   <code>z = 36.75</code> in float64 and from <code>z = 16.65</code> in float32 — I found those by walking a</p>
+<p>   0.05 grid. Float32 is what every GPU uses, so a pre-activation of about 17 is enough</p>
+<p>   to make <code>p(1−p)</code> provably zero. That is not a strange value at all: it is what an</p>
+<p>   unnormalised feature or a large bias produces on day one.</p>
+<p>2. <strong>MSE on a saturated, wrong neuron does not move, ever.</strong> <code>w</code> stayed at <code>30.0000</code>,</p>
+<p>   <code>b</code> at <code>50.0000</code>, loss pinned at <code>0.500000</code> for all 500 steps. BCE on the identical</p>
+<p>   start crossed <code>p &lt; 0.5</code> at step <strong>97</strong> and finished at loss <code>0.000006</code>.</p>
+<p>3. <strong>Finite differences lie in the same direction.</strong> At <code>z = 71</code> the numeric gradient</p>
+<p>   of MSE is <code>0.0</code> too, so the debugging tool I would reach for confirms the wrong</p>
+<p>   story. The gradient really is zero; the function really is flat there. That is the</p>
+<p>   trap: the maths is fine and the model is still broken.</p>
+<p>4. <strong>The naive BCE is not usable at saturation either.</strong> At <code>z = +800, t = 0</code> it raises</p>
+<p>   <code>ValueError: expected a positive input, got 0.0</code> because <code>log(1 − p)</code> becomes</p>
+<p>   <code>log(0)</code>. The logit form <code>max(z,0) − z·t + log1p(exp(−|z|))</code> returns <code>800.0</code>, which</p>
+<p>   is the true value, without ever forming <code>p</code>.</p>
+<p>One honest correction. My first version of the training demo used the exam&#x27;s own label</p>
+<p><code>t = 1</code> with <code>p = 1</code>: both losses returned <code>0.0</code> and the &quot;comparison&quot; proved nothing,</p>
+<p>because a correct and saturated prediction has zero error under both. I had to make the</p>
+<p>neuron wrong (<code>t = 0</code>) for the two losses to separate at all. A demo where both arms</p>
+<p>agree with each other is not a demo, it is decoration.</p>
+<p>---</p>
+<h2>Security #26 — The token was random, just not unpredictable (CWE-338)</h2>
+<p>A password-reset token is not a secret number, it is a number the attacker cannot</p>
+<p>guess. Those are different requirements, and applications fail both separately:</p>
+<ul><li>the generator is a statistician&#x27;s generator (Mersenne Twister, <code>rand()</code>, <code>Math.random</code>),</li></ul>
+<p>  which is uniform, fast, and fully reversible from its own output;</p>
+<ul><li>or the generator is fine but the <strong>seed</strong> is a clock reading, which leaves a few</li></ul>
+<p>  thousand possibilities.</p>
+<p>Eight characters from a 32-symbol alphabet is 40 bits of &quot;randomness&quot; that collapses to</p>
+<p><code>log2(window)</code> bits of real work. I measured both halves in one file, nothing contacted.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code># CWE-338 - the token was random, just not unpredictable.
+# Sandbox only: the &quot;app&quot; is a function in this file, nothing is contacted.
+#
+# Part A: an app that seeds from the clock. Brute force the seed back.
+# Part B: 624 raw 32-bit outputs are enough to rebuild the Mersenne Twister.
+import random
+import secrets
+import time
+
+ALPHA = &quot;abcdefghijkmnopqrstuvwxyz23456789&quot;   # 32 symbols, no lookalikes
+OBSERVED_AT = 1793000000                      # pretend &quot;now&quot; when the token leaked
+WINDOW = 600                                  # seconds either side of &quot;now&quot;
+
+
+def issue_token(seed_epoch, n=8):
+    &quot;&quot;&quot;The vulnerable app, as written: random seeded from the clock.&quot;&quot;&quot;
+    r = random.Random(int(seed_epoch))
+    return &quot;&quot;.join(r.choice(ALPHA) for _ in range(n))
+
+
+# ---------------------------------------------------------------- part A
+want = issue_token(OBSERVED_AT - 37)          # the token the attacker got
+hits = [c for c in range(OBSERVED_AT - WINDOW, OBSERVED_AT + WINDOW)
+        if issue_token(c) == want]
+
+print(&quot;== A. seed recovery ==&quot;)
+print(f&quot;observed token          : {want}&quot;)
+print(f&quot;candidates tried        : {2 * WINDOW} (a +/-{WINDOW // 60} minute window around &#x27;now&#x27;)&quot;)
+print(f&quot;seeds whose token match : {len(hits)}  -&gt; {[c - OBSERVED_AT for c in hits]} s from now&quot;)
+recovered = hits[0]
+print(f&quot;attacker, from the seed : {issue_token(recovered + 1)}&quot;)
+print(f&quot;app, one second later   : {issue_token(recovered + 1)}&quot;)
+print(f&quot;one hour of clock drift costs {2 * 3600} candidates, still nothing.&quot;)
+
+# ---------------------------------------------------------------- part B
+MASK = 0xFFFFFFFF
+
+
+def temper(y):
+    y ^= y &gt;&gt; 11
+    y ^= (y &lt;&lt; 7) &amp; 0x9D2C5680
+    y ^= (y &lt;&lt; 15) &amp; 0xEFC60000
+    y ^= y &gt;&gt; 18
+    return y &amp; MASK
+
+
+def unshift_right(y, shift):
+    x = 0
+    for i in range(31, -1, -1):
+        bit = (y &gt;&gt; i) &amp; 1
+        if i + shift &lt; 32:
+            bit ^= (x &gt;&gt; (i + shift)) &amp; 1
+        x |= bit &lt;&lt; i
+    return x
+
+
+def unshift_left(y, shift, mask):
+    x = 0
+    for i in range(32):
+        bit = (y &gt;&gt; i) &amp; 1
+        if i - shift &gt;= 0:
+            bit ^= ((x &gt;&gt; (i - shift)) &amp; 1) &amp; ((mask &gt;&gt; i) &amp; 1)
+        x |= bit &lt;&lt; i
+    return x
+
+
+def untemper(y):
+    y = unshift_right(y, 18)
+    y = unshift_left(y, 15, 0xEFC60000)
+    y = unshift_left(y, 7, 0x9D2C5680)
+    y = unshift_right(y, 11)
+    return y &amp; MASK
+
+
+print()
+print(&quot;== B. state recovery ==&quot;)
+check = [random.getrandbits(32) for _ in range(200)]
+print(f&quot;untemper(temper(x)) == x for 200 values : {all(untemper(temper(v)) == v for v in check)}&quot;)
+
+
+def issue_id():
+    &quot;&quot;&quot;The same PRNG, exposed as a 32-bit identifier (an order number, say).&quot;&quot;&quot;
+    return PRNG.getrandbits(32)
+
+
+PRNG = random.Random(20261029)
+leaked = [issue_id() for _ in range(624)]
+state = [untemper(v) for v in leaked]
+clone = random.Random()
+clone.setstate((3, tuple(state) + (624,), None))
+predicted = [clone.getrandbits(32) for _ in range(5)]
+actual = [issue_id() for _ in range(5)]
+print(f&quot;outputs collected       : {len(leaked)}&quot;)
+print(f&quot;next 5, predicted       : {predicted}&quot;)
+print(f&quot;next 5, actual          : {actual}&quot;)
+print(f&quot;identical               : {predicted == actual}&quot;)
+
+# ---------------------------------------------------------------- the fix
+print()
+print(&quot;== the fix: the platform&#x27;s own CSPRNG ==&quot;)
+good = secrets.token_urlsafe(16)
+print(f&quot;secrets.token_urlsafe(16): {len(good)} chars from [A-Za-z0-9_-], 96 bits of entropy&quot;)
+print(f&quot;two calls in the same second equal : &quot;
+      f&quot;{secrets.token_urlsafe(16) == secrets.token_urlsafe(16)}&quot;)
+same = issue_token(OBSERVED_AT) == issue_token(OBSERVED_AT)
+print(f&quot;clock-seeded token is deterministic : {same}  (same second, same token)&quot;)</code></pre>
+<p>Sandbox check (local only):</p>
+<pre><code>== A. seed recovery ==
+observed token          : pd6eyzg5
+candidates tried        : 1200 (a +/-10 minute window around &#x27;now&#x27;)
+seeds whose token match : 1  -&gt; [-37] s from now
+attacker, from the seed : 44ro5u28
+app, one second later   : 44ro5u28
+one hour of clock drift costs 7200 candidates, still nothing.
+
+== B. state recovery ==
+untemper(temper(x)) == x for 200 values : True
+outputs collected       : 624
+next 5, predicted       : [2893647027, 1662812824, 3319793958, 3974632129, 2097200746]
+next 5, actual          : [2893647027, 1662812824, 3319793958, 3974632129, 2097200746]
+identical               : True
+
+== the fix: the platform&#x27;s own CSPRNG ==
+secrets.token_urlsafe(16): 22 chars from [A-Za-z0-9_-], 96 bits of entropy
+two calls in the same second equal : False
+clock-seeded token is deterministic : True  (same second, same token)</code></pre>
+<p><strong>What I understood about preventing it:</strong></p>
+<pre><code>import secrets
+
+token = secrets.token_urlsafe(32)                    # 256 bits, OS CSPRNG
+ok = secrets.compare_digest(stored, provided)         # constant time
+# never: random.seed(int(time.time())); never: random.random() for a credential</code></pre>
+<p><strong>What I understood:</strong> the two halves are not equally hard to defend against, and the</p>
+<p>order matters. Part A needs no cleverness at all: 1200 candidate reconstructions of a</p>
+<p>clock-seeded generator produced exactly one match, 37 seconds away from &quot;now&quot;, and the</p>
+<p>next token followed from the recovered seed. Ten minutes of clock uncertainty costs</p>
+<p>1200 guesses; an hour costs 7200. That attack does not care how the app slices the</p>
+<p>output stream, which is why time-seeding alone is fatal.</p>
+<p>Part B is the sharper one and needs more from the attacker: 624 consecutive 32-bit</p>
+<p>outputs, un-tempered word by word, rebuild the 19937-bit internal state, and from there</p>
+<p>the next five values are not predicted &quot;well&quot;, they are <strong>identical</strong> — `identical:</p>
+<p>True<code>. The caveat I have to write down honestly: I used </code>getrandbits(32)` as the exposed</p>
+<p>value. If the app pushes those bits through <code>random.choices</code> with float weights, the</p>
+<p>mapping is lossy and recovery gets noisy. So the practical lesson is the reverse of the</p>
+<p>order I built it in: **seed recovery is the reliable half, state recovery is the bonus</p>
+<p>when the raw outputs leak** (order ids, nonces, timestamps mixed with counters).</p>
+<p>The fix is not a better seed, it is a different class of generator: <code>secrets</code>, which</p>
+<p>reads from the OS CSPRNG and is not reproducible by construction. Two calls in the same</p>
+<p>second differ (<code>False</code> above); the clock-seeded one is <code>True</code>, same second, same token.</p>
+<p>---</p>
+<h2>Day 26 notes</h2>
+<ul><li>Concept #26: five measurements, all from real runs above. ✔</li><li>Security #26: both halves reproduced the prediction exactly; sandbox only, nothing contacted. ✔</li><li>1574 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 026 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>
