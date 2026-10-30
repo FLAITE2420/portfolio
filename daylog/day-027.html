@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 027 — The shape was right and the picture was gone; and the lock was on the wrong line · Matías Rathgeb</title>
+<meta name="description" content="Day 027 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 027 OF 1600 · 2026-10-30</p>
+    <h1>Day 027 — The shape was right and the picture was gone; and the lock was on the wrong line</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-10-30 · <strong>Day:</strong> 27 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #27 — A pooling layer can return the right shape and the wrong picture</h2>
+<p>MA04, Deep Learning, mock question 9. Input 5x5, filter 3x3, output 3x3, and the</p>
+<p>formula <code>m = (n − l + 2p)/s + 1</code>. Find <code>s</code> and <code>p</code>. The answer sheet says stride 1,</p>
+<p>padding 0, and then adds one sentence that I read four times: *other options can be</p>
+<p>valid, as long as the equality is kept.* That sentence is the whole question.</p>
+<p>It is true, and it is worse than the answer sheet lets on. I enumerated <code>s</code> from 1</p>
+<p>to 8 and <code>p</code> from 0 to 8 for <code>n = 5</code>, <code>l = 3</code>, <code>m = 3</code> and got <strong>17 pairs</strong> that</p>
+<p>satisfy the equation. I did not stop at the arithmetic: I ran a real 3x3 max-pool</p>
+<p>for every one of them. All 17 return a 3x3 output. The shape check passes 17 times</p>
+<p>out of 17 and it is the only check the formula gives you.</p>
+<p>Then I marked, for each one, which input cells no window ever touches. Four pairs</p>
+<p>read all 25 cells. The rest leave 9, 16 or 21 cells unread. I put a 9 in the cell</p>
+<p>that the most of them miss — <code>(0, 3)</code> — and **13 of the 17 return a 3x3 picture whose</p>
+<p>maximum is 1**. The answer that scores full marks can be the configuration that</p>
+<p>throws away the brightest pixel in the image, and the output shape is identical.</p>
+<p>The other half of the same arithmetic is the truncation. With <code>n = 6</code>, <code>l = 3</code>, <code>s = 2</code>,</p>
+<p><code>p = 0</code> the formula gives <code>(6 − 3)/2 + 1 = 2.5</code>, and integer division makes it 2. That</p>
+<p><code>.5</code> is not a rounding detail: it is one entire column and one entire row that never</p>
+<p>enter a window. <strong>11 of the 36 cells are never read</strong> — row 5 and column 5, counting</p>
+<p>the corner once. The grid&#x27;s maximum is 9, and it sits in four cells; two of them,</p>
+<p><code>(0, 5)</code> and <code>(5, 0)</code>, are in the discarded strip. The output still shows 9 only</p>
+<p>because a different copy of 9 was inside a window. On a real image, the one cell that</p>
+<p>mattered does not need a duplicate.</p>
+<p><strong>What I tried today:</strong> one script, stdlib only: a real max-pool that also counts how</p>
+<p>many windows read each cell, the same formula over <code>n = 4..12</code> to see exactly where</p>
+<p>truncation eats input, and the full enumeration of the inverse — every solution</p>
+<p>verified by running the pooling, not by trusting the algebra.</p>
+<pre><code># pool_shape.py - MA04 (Deep Learning), mock question 9: the shape formula
+# m = (n - l + 2p)/s + 1. stdlib only.
+#
+# Three measurements:
+#   1. real 3x3 max-pooling on a 6x6 grid with s=2, p=0: which input cells
+#      actually reach the output, and which ones are never read at all
+#   2. the same formula over a table of n: when the division is not exact,
+#      integer division truncates and input is silently dropped
+#   3. the inverse is not a function: every (s, p) pair that gives the SAME m
+#      for n=5, l=3, m=3, each one verified by running the pooling for real,
+#      then the same grid with its brightest cell placed where some of them
+#      never look
+
+W = H = 6
+GRID = [
+    [ 3,  1,  4,  1,  5,  9],
+    [ 2,  6,  5,  3,  5,  8],
+    [ 9,  7,  9,  3,  2,  3],
+    [ 8,  4,  6,  2,  6,  4],
+    [ 3,  3,  8,  3,  2,  7],
+    [ 9,  5,  0,  2,  8,  4],
+]
+
+
+def out_size(n, l, p, s):
+    &quot;&quot;&quot;The mock&#x27;s formula, with the division made explicit (and truncating).&quot;&quot;&quot;
+    return (n - l + 2 * p) // s + 1
+
+
+def maxpool(img, l, p, s):
+    &quot;&quot;&quot;Real max-pooling. Returns (output, cover, padded) where cover[y][x] is
+    how many windows read the padded input cell (y, x).&quot;&quot;&quot;
+    n = len(img)
+    m = out_size(n, l, p, s)
+    padded = [[0] * (n + 2 * p) for _ in range(n + 2 * p)]
+    for y in range(n):
+        for x in range(n):
+            padded[y + p][x + p] = img[y][x]
+    cover = [[0] * (n + 2 * p) for _ in range(n + 2 * p)]
+    out = [[0] * m for _ in range(m)]
+    for oy in range(m):
+        for ox in range(m):
+            best = None
+            for dy in range(l):
+                for dx in range(l):
+                    y, x = oy * s + dy, ox * s + dx
+                    cover[y][x] += 1
+                    v = padded[y][x]
+                    best = v if best is None else max(best, v)
+            out[oy][ox] = best
+    return out, cover, padded
+
+
+def unread_input(img, l, p, s):
+    &quot;&quot;&quot;Input cells (original coordinates) that no window ever touches.&quot;&quot;&quot;
+    n = len(img)
+    _, cover, _ = maxpool(img, l, p, s)
+    return [(y, x) for y in range(n) for x in range(n) if cover[y + p][x + p] == 0]
+
+
+print(&quot;== 1. real pooling, 6x6 input, l=3, s=2, p=0 ==&quot;)
+out, cover, padded = maxpool(GRID, 3, 0, 2)
+print(&quot;formula        m = (6 - 3 + 0)//2 + 1 =&quot;, out_size(W, 3, 0, 2))
+print(&quot;output size    %dx%d&quot; % (len(out), len(out[0])))
+print(&quot;output         %s&quot; % out)
+never = unread_input(GRID, 3, 0, 2)
+print(&quot;input cells never read        %d of %d&quot; % (len(never), W * H))
+print(&quot;they are exactly              row 5 (%d cells) + column 5 (%d cells) - the corner = %d&quot;
+      % (H, W, H + W - 1))
+print(&quot;values that never reached out %s&quot; % [GRID[y][x] for y, x in never])
+print(&quot;max of the discarded values   %d&quot; % max(GRID[y][x] for y, x in never))
+top = max(max(r) for r in GRID)
+locs = [(y, x) for y in range(H) for x in range(W) if GRID[y][x] == top]
+print(&quot;grid max is %d at %s&quot; % (top, locs))
+print(&quot;of those, never read:         %s&quot; % [c for c in locs if c in never])
+print(&quot;output max is %d, and it survives only because another 9 was read&quot;
+      % max(max(r) for r in out))
+
+print()
+print(&quot;== 2. exact division vs truncation (l=3, s=2, p=0) ==&quot;)
+print(&quot; n   (n-l)/s   exact?   m   input cells   cells inside windows   dropped&quot;)
+for n in range(4, 13):
+    m = out_size(n, 3, 0, 2)
+    span = (m - 1) * 2 + 3          # last padded index a window touches + 1
+    dropped = n - span
+    exact = (n - 3) % 2 == 0
+    print(&quot; %2d    %4.1f      %-5s  %2d      %2d                %2d                  %d&quot;
+          % (n, (n - 3) / 2, exact, m, n, span, dropped))
+
+print()
+print(&quot;== 3. the inverse is a set, not a value (n=5, l=3, m=3) ==&quot;)
+INPUT5 = [[1, 1, 1, 1, 1],
+          [1, 1, 1, 1, 1],
+          [1, 1, 1, 1, 1],
+          [1, 1, 1, 1, 1],
+          [1, 1, 1, 1, 1]]
+sols = [(s, p) for s in range(1, 9) for p in range(0, 9)
+        if out_size(5, 3, p, s) == 3]
+print(&quot;solutions for n=5, l=3, m=3:  %d&quot; % len(sols))
+print(&quot;s,p pairs:                    %s&quot; % sols)
+for s, p in sols:
+    o, _, _ = maxpool(INPUT5, 3, p, s)
+    print(&quot;  s=%d p=%d  real output %dx%d  input cells never read: %2d&quot;
+          % (s, p, len(o), len(o[0]), len(unread_input(INPUT5, 3, p, s))))
+print(&quot;all give 3x3:                 %s&quot;
+      % all(maxpool(INPUT5, 3, p, s)[0].__len__() == 3 for s, p in sols))
+
+# where is the cell that the most solutions never look at?
+miss = {}
+for s, p in sols:
+    for cell in unread_input(INPUT5, 3, p, s):
+        miss[cell] = miss.get(cell, 0) + 1
+worst, count = max(miss.items(), key=lambda kv: kv[1])
+HOT = [row[:] for row in INPUT5]
+HOT[worst[0]][worst[1]] = 9
+print()
+print(&quot;brightest cell placed at %s (missed by %d of %d solutions):&quot; % (worst, count, len(sols)))
+for s, p in sols:
+    o, _, _ = maxpool(HOT, 3, p, s)
+    print(&quot;  s=%d p=%d  output max = %d   %s&quot;
+          % (s, p, max(max(r) for r in o),
+             &quot;DISCARDED&quot; if (worst in unread_input(HOT, 3, p, s)) else &quot;seen&quot;))
+lost = [sp for sp in sols if max(max(r) for r in maxpool(HOT, 3, sp[1], sp[0])[0]) &lt; 9]
+print(&quot;solutions that return the same 3x3 shape and lose the 9: %d of %d&quot;
+      % (len(lost), len(sols)))
+print(&quot;the shape check cannot tell them apart: every one of them returns 3x3&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>== 1. real pooling, 6x6 input, l=3, s=2, p=0 ==
+formula        m = (6 - 3 + 0)//2 + 1 = 2
+output size    2x2
+output         [[9, 9], [9, 9]]
+input cells never read        11 of 36
+they are exactly              row 5 (6 cells) + column 5 (6 cells) - the corner = 11
+values that never reached out [9, 8, 3, 4, 7, 9, 5, 0, 2, 8, 4]
+max of the discarded values   9
+grid max is 9 at [(0, 5), (2, 0), (2, 2), (5, 0)]
+of those, never read:         [(0, 5), (5, 0)]
+output max is 9, and it survives only because another 9 was read
+
+== 2. exact division vs truncation (l=3, s=2, p=0) ==
+ n   (n-l)/s   exact?   m   input cells   cells inside windows   dropped
+  4     0.5      False   1       4                 3                  1
+  5     1.0      True    2       5                 5                  0
+  6     1.5      False   2       6                 5                  1
+  7     2.0      True    3       7                 7                  0
+  8     2.5      False   3       8                 7                  1
+  9     3.0      True    4       9                 9                  0
+ 10     3.5      False   4      10                 9                  1
+ 11     4.0      True    5      11                11                  0
+ 12     4.5      False   5      12                11                  1
+
+== 3. the inverse is a set, not a value (n=5, l=3, m=3) ==
+solutions for n=5, l=3, m=3:  17
+s,p pairs:                    [(1, 0), (2, 1), (3, 2), (3, 3), (4, 3), (4, 4), (5, 4), (5, 5), (5, 6), (6, 5), (6, 6), (6, 7), (7, 6), (7, 7), (7, 8), (8, 7), (8, 8)]
+  s=1 p=0  real output 3x3  input cells never read:  0
+  s=2 p=1  real output 3x3  input cells never read:  0
+  s=3 p=2  real output 3x3  input cells never read:  0
+  s=3 p=3  real output 3x3  input cells never read:  0
+  s=4 p=3  real output 3x3  input cells never read: 16
+  s=4 p=4  real output 3x3  input cells never read:  9
+  s=5 p=4  real output 3x3  input cells never read: 16
+  s=5 p=5  real output 3x3  input cells never read: 16
+  s=5 p=6  real output 3x3  input cells never read: 16
+  s=6 p=5  real output 3x3  input cells never read: 16
+  s=6 p=6  real output 3x3  input cells never read: 16
+  s=6 p=7  real output 3x3  input cells never read: 21
+  s=7 p=6  real output 3x3  input cells never read: 16
+  s=7 p=7  real output 3x3  input cells never read: 16
+  s=7 p=8  real output 3x3  input cells never read: 21
+  s=8 p=7  real output 3x3  input cells never read: 16
+  s=8 p=8  real output 3x3  input cells never read: 16
+all give 3x3:                 True
+
+brightest cell placed at (0, 3) (missed by 13 of 17 solutions):
+  s=1 p=0  output max = 9   seen
+  s=2 p=1  output max = 9   seen
+  s=3 p=2  output max = 9   seen
+  s=3 p=3  output max = 9   seen
+  s=4 p=3  output max = 1   DISCARDED
+  s=4 p=4  output max = 1   DISCARDED
+  s=5 p=4  output max = 1   DISCARDED
+  s=5 p=5  output max = 1   DISCARDED
+  s=5 p=6  output max = 1   DISCARDED
+  s=6 p=5  output max = 1   DISCARDED
+  s=6 p=6  output max = 1   DISCARDED
+  s=6 p=7  output max = 1   DISCARDED
+  s=7 p=6  output max = 1   DISCARDED
+  s=7 p=7  output max = 1   DISCARDED
+  s=7 p=8  output max = 1   DISCARDED
+  s=8 p=7  output max = 1   DISCARDED
+  s=8 p=8  output max = 1   DISCARDED
+solutions that return the same 3x3 shape and lose the 9: 13 of 17
+the shape check cannot tell them apart: every one of them returns 3x3</code></pre>
+<p><strong>What I understood from it:</strong> the formula is a **necessary condition on the shape,</p>
+<p>not a definition of the layer**. It tells me which <code>(n, l, p, s)</code> are legal; it says</p>
+<p>nothing about whether the layer sees the data. The dropped cells are not a rounding</p>
+<p>error to be forgotten, they are <code>(n − l) mod s</code> — one column here, one row there, and</p>
+<p>a table is enough to see that every odd <code>n</code> loses one. When a shape formula divides,</p>
+<p>the remainder is the part of the input that silently stops existing, so the honest</p>
+<p>question is not &quot;does <code>m</code> match&quot; but &quot;for which <code>(s, p)</code> is the division exact&quot;; if</p>
+<p>none is, the input size or the filter has to change. And for the exam question</p>
+<p>itself: 17 answers satisfy the equation, 4 of them see every pixel, and the split is</p>
+<p>not luck — the 4 have <code>s ≤ l = 3</code>, so consecutive windows still touch. All 13 that</p>
+<p>lose data have <code>s &gt; l</code>: the windows step further than they reach, the gaps between</p>
+<p>them are input no window ever reads, and no amount of padding closes a gap in the</p>
+<p>middle. &quot;Correct&quot; and &quot;equivalent&quot; are different words and this question measures the</p>
+<p>first one only.</p>
+<p>---</p>
+<h2>Security #27 — Twenty withdrawals, one balance, and a lock on the wrong line (CWE-362)</h2>
+<p>The bug class is check-then-act: the code reads a value, decides on it, and writes</p>
+<p>later. If anything can happen between the read and the write — another thread, another</p>
+<p>request, another worker process — the decision was made on a value that is no longer</p>
+<p>true. The classic form is a balance. The pattern is not &quot;missing lock&quot;, and that is</p>
+<p>why it survives review: this code usually has a lock.</p>
+<p>I built a loopback-only sandbox: one <code>ThreadingHTTPServer</code> on <code>127.0.0.1:8761</code>, one</p>
+<p>toy account holding 100, and 20 concurrent requests each asking to withdraw 100. A</p>
+<p>barrier releases all 20 handlers together <em>after</em> parsing and <em>before</em> the read, so</p>
+<p>what gets measured is the defect and not my laptop&#x27;s scheduler. Three implementations</p>
+<p>of the same function:</p>
+<ul><li><strong>naive</strong> — read, work 50 ms (one database round-trip), check, write. No lock.</li><li><strong>write_lock</strong> — the same, but the write is wrapped in <code>threading.Lock</code>. This is the</li></ul>
+<p>  version someone adds after the bug is reported.</p>
+<ul><li><strong>atomic</strong> — the lock contains the read, the check and the write.</li></ul>
+<p>Result: <strong>naive approves 20 of 20 and write_lock approves 20 of 20.</strong> Both report the</p>
+<p>same balance to the application — <code>[100]</code>, every single request — and both end with a</p>
+<p>final balance of <strong>0</strong> after 2000 left an account that held 100. That last number is</p>
+<p>the part I did not expect to be the interesting one: the balance does not go negative,</p>
+<p>because all 20 computed <code>100 − 100 = 0</code> from the stale read and wrote the same value;</p>
+<p>it is a lost update. So a reconciliation that looks at the balance sees <code>0</code>, which is</p>
+<p>exactly what a correct system would show after one legitimate withdrawal. The damage</p>
+<p>is 1900 and the balance column cannot distinguish it from no damage at all.</p>
+<p>Only the third version approves 1 of 20. The lock was never missing in version two; it</p>
+<p>was in the wrong place — around the assignment instead of around the decision.</p>
+<p>This is where the fix gets uncomfortable, because the single-process lock is the</p>
+<p>answer only if there is exactly one process. Two app workers, two replicas, or the</p>
+<p>same code run as a cron job next to the web server, and each one holds its own lock</p>
+<p>over its own copy of the state — the race is back, unchanged. The lock has to be the</p>
+<p>one the storage engine owns: a conditional update that reports whether it applied</p>
+<p>(<code>UPDATE … SET balance = balance − ? WHERE balance &gt;= ?</code> and then read the row count),</p>
+<p>a <code>SELECT … FOR UPDATE</code> inside a transaction, or a unique constraint on an idempotency</p>
+<p>key so a retried request cannot be paid twice. And the check must be part of the same</p>
+<p>statement as the write. If the answer is two statements, it is not a fix, it is the</p>
+<p>bug with extra steps.</p>
+<p><strong>The pattern I studied</strong> — the difference between the two functions is the position of</p>
+<p>one line, and it is not the line that writes. In <code>withdraw_naive</code> the sequence is</p>
+<p><code>bal = state[&quot;balance&quot;]</code> … <code>if bal &gt;= amount:</code> … <code>state[&quot;balance&quot;] = bal - amount</code>. In</p>
+<p><code>withdraw_atomic</code> the exact same three steps sit inside <code>with guard:</code>. Nothing else</p>
+<p>changes — not the arithmetic, not the amount, not the HTTP handler. The lock moved up</p>
+<p>two lines and the result went from 20/20 to 1/20.</p>
+<p><strong>What I understood about preventing it:</strong> the unit of protection is not the write, it</p>
+<p>is the <strong>decision</strong>. Whatever line makes the choice has to be inside the same</p>
+<p>exclusive region as the line that acts on it, and in a networked system that region</p>
+<p>has to be the database&#x27;s, not the process&#x27;s. A lock that only orders the writes removes</p>
+<p>the corrupted interleaving and keeps the wrong one: 20 requests that each believe they</p>
+<p>were the first.</p>
+<p>The whole sandbox, one file, so the measurement can be repeated:</p>
+<pre><code># race.py - CWE-362/CWE-367: check-then-act on a shared balance.
+# Sandbox only: one loopback server on 127.0.0.1, one toy account, no real data.
+#
+# Three implementations of the same withdraw():
+#   naive       read, (pause), check, write          -&gt; the check inspects a stale copy
+#   write_lock  lock ONLY around the write           -&gt; a lock, and still useless
+#   atomic      lock around read+check+write         -&gt; one winner
+#
+# Each is hit with 20 concurrent requests for 100 against an opening balance of 100.
+# The 20 handlers are released together AFTER parsing and BEFORE the read, so what
+# is measured is the defect itself and not this machine&#x27;s scheduler.
+import json
+import threading
+import time
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse, parse_qs
+
+PORT = 8761
+OPENING = 100
+AMOUNT = 100
+N = 20
+WINDOW = 0.05           # the read-modify-write window, i.e. one DB round-trip
+
+state = {&quot;balance&quot;: OPENING}
+guard = threading.Lock()
+gate = threading.Barrier(N, timeout=10)
+
+
+def withdraw_naive(amount):
+    bal = state[&quot;balance&quot;]              # read
+    time.sleep(WINDOW)                  # the round-trip
+    if bal &gt;= amount:                   # check a value that may be stale
+        time.sleep(WINDOW)              # more work before the write
+        state[&quot;balance&quot;] = bal - amount  # write what was computed from the stale read
+        return True, bal
+    return False, state[&quot;balance&quot;]
+
+
+def withdraw_write_lock(amount):
+    bal = state[&quot;balance&quot;]              # read
+    time.sleep(WINDOW)
+    if bal &gt;= amount:
+        with guard:                      # the lock only protects the assignment
+            state[&quot;balance&quot;] = bal - amount
+        return True, bal
+    return False, state[&quot;balance&quot;]
+
+
+def withdraw_atomic(amount):
+    with guard:                          # read, check and write in one critical section
+        bal = state[&quot;balance&quot;]
+        time.sleep(WINDOW)
+        if bal &lt; amount:
+            return False, bal
+        state[&quot;balance&quot;] = bal - amount
+        return True, bal
+
+
+MODES = {&quot;naive&quot;: withdraw_naive,
+         &quot;write_lock&quot;: withdraw_write_lock,
+         &quot;atomic&quot;: withdraw_atomic}
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        q = parse_qs(urlparse(self.path).query)
+        mode = (q.get(&quot;mode&quot;) or [&quot;naive&quot;])[0]
+        amount = int((q.get(&quot;amount&quot;) or [str(AMOUNT)])[0])
+        try:
+            gate.wait()                  # all 20 requests are in flight at once
+        except threading.BrokenBarrierError:
+            pass
+        ok, seen = MODES[mode](amount)
+        body = json.dumps({&quot;approved&quot;: ok, &quot;balance_seen&quot;: seen,
+                           &quot;balance_after&quot;: state[&quot;balance&quot;]}).encode()
+        self.send_response(200)
+        self.send_header(&quot;Content-Type&quot;, &quot;application/json&quot;)
+        self.send_header(&quot;Content-Length&quot;, str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *a):
+        pass
+
+
+def run(mode):
+    global gate
+    state[&quot;balance&quot;] = OPENING
+    gate = threading.Barrier(N, timeout=10)
+    results = []
+    lock = threading.Lock()
+
+    def one():
+        url = &quot;http://127.0.0.1:%d/withdraw?mode=%s&amp;amount=%d&quot; % (PORT, mode, AMOUNT)
+        with urllib.request.urlopen(url, timeout=20) as r:
+            d = json.loads(r.read())
+        with lock:
+            results.append(d)
+
+    threads = [threading.Thread(target=one) for _ in range(N)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    approved = [r for r in results if r[&quot;approved&quot;]]
+    print(&quot;-- %s --&quot; % mode)
+    print(&quot;  approved                  %d of %d&quot; % (len(approved), N))
+    print(&quot;  rejected                  %d of %d&quot; % (N - len(approved), N))
+    print(&quot;  balance the app checked   %s&quot; % sorted({r[&quot;balance_seen&quot;] for r in results}))
+    print(&quot;  opening balance           %d&quot; % OPENING)
+    print(&quot;  approved total            %d&quot; % (len(approved) * AMOUNT))
+    print(&quot;  booked against balance    %d&quot; % (len(approved) * AMOUNT - OPENING))
+    print(&quot;  final balance             %d&quot; % state[&quot;balance&quot;])
+    print()
+
+
+srv = ThreadingHTTPServer((&quot;127.0.0.1&quot;, PORT), Handler)
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+print(&quot;sandbox server on 127.0.0.1:%d, account balance %d, %d concurrent requests of %d&quot;
+      % (PORT, OPENING, N, AMOUNT))
+print(&quot;read-modify-write window: %.0f ms&quot; % (WINDOW * 1000))
+print()
+try:
+    for m in (&quot;naive&quot;, &quot;write_lock&quot;, &quot;atomic&quot;):
+        run(m)
+finally:
+    srv.shutdown()
+
+print(&quot;Two of the three approve every request. The one that does not is the one&quot;)
+print(&quot;whose critical section contains the read.&quot;)</code></pre>
+<p>Sandbox check (local only):</p>
+<pre><code>sandbox server on 127.0.0.1:8761, account balance 100, 20 concurrent requests of 100
+read-modify-write window: 50 ms
+
+-- naive --
+  approved                  20 of 20
+  rejected                  0 of 20
+  balance the app checked   [100]
+  opening balance           100
+  approved total            2000
+  booked against balance    1900
+  final balance             0
+
+-- write_lock --
+  approved                  20 of 20
+  rejected                  0 of 20
+  balance the app checked   [100]
+  opening balance           100
+  approved total            2000
+  booked against balance    1900
+  final balance             0
+
+-- atomic --
+  approved                  1 of 20
+  rejected                  19 of 20
+  balance the app checked   [0, 100]
+  opening balance           100
+  approved total            100
+  booked against balance    0
+  final balance             0
+
+Two of the three approve every request. The one that does not is the one
+whose critical section contains the read.</code></pre>
+<p><strong>What I understood:</strong> two of the three versions approve every request, and I would</p>
+<p>have shipped the second one believing it was fixed, because it has a lock in it and</p>
+<p>the lock is real. The measurement that separates them is not &quot;is there a lock&quot; but</p>
+<p>&quot;what does the app think the balance was when it said yes&quot;. All 20 got <code>100</code>. A</p>
+<p>balance of 0 at the end, in every single run, for all three versions — the number that</p>
+<p>looks healthy is the number that hides 1900.</p>
+<p>---</p>
+<h2>Day 27 notes</h2>
+<ul><li>Concept #27: real 3x3 max-pool on a 6x6 grid with s=2, p=0 → 2x2 output, 11 of 36</li></ul>
+<p>  input cells never read; <code>(n − l) mod s</code> is exactly the dropped strip; for n=5, l=3,</p>
+<p>  m=3 there are 17 legal (s, p) pairs, 13 of them lose a 9 placed at (0, 3), and every</p>
+<p>  one of the 17 returns 3x3. Code ran, output above. ✔</p>
+<ul><li>Security #27: check-then-act on a shared balance (CWE-362 / CWE-367). 20/20 approved</li></ul>
+<p>  with no lock, 20/20 with the lock around the write only, 1/20 when the lock contains</p>
+<p>  the read. 2000 out of 100, final balance 0 in all three cases. Sandbox only,</p>
+<p>  127.0.0.1. ✔</p>
+<ul><li>Both scripts run twice with an empty <code>diff</code>: the numbers above are not one lucky</li></ul>
+<p>  interleaving. ✔</p>
+<ul><li>1573 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 027 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>
