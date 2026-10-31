@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 028 — Everyone did the best they could, and the extra road made it worse · Matías Rathgeb</title>
+<meta name="description" content="Day 028 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 028 OF 1600 · 2026-10-31</p>
+    <h1>Day 028 — Everyone did the best they could, and the extra road made it worse</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-10-31 · <strong>Day:</strong> 28 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #28 — The route everyone picks is not the route that is fastest for everyone</h2>
+<p>MA07, Operations Research, routing. The course notes say it in one line: individually</p>
+<p>rational routing is not system optimal. I had read that as a remark about traffic jams.</p>
+<p>It is a theorem with a number attached, and the number is <strong>4/3</strong>.</p>
+<p>The instance is small enough to hold in my head. A hundred drivers, two roads between</p>
+<p>the same two points. Road A costs 1.0 no matter what. Road B costs the share of the</p>
+<p>fleet that is on it, so if all hundred take it, each of them pays 1.0. Every driver</p>
+<p>compares their own two numbers and takes the cheaper road. The equilibrium is not</p>
+<p>50/50: it is <strong>99 or 100 on road B</strong> — the whole fleet — at 1.0000 per driver. The</p>
+<p>system optimum is <strong>50/50 at 0.7500</strong>. The equilibrium is <strong>1.333333</strong> times the</p>
+<p>optimum, and 1.333333 is 4/3 exactly, to six decimals.</p>
+<p>That is the whole mechanism in one line: a driver on the shared road pays their own</p>
+<p>share of the congestion and nothing for the congestion they add to everyone behind</p>
+<p>them. Each comparison is correct. The aggregate is not. I also ran the same network at</p>
+<p>N = 2, 3, 4, 6, 10 and 12 drivers, and the ratio sits on 4/3 every time except N = 3,</p>
+<p>where the granularity of three whole drivers cannot split evenly and it lands on</p>
+<p>1.2857. So the 4/3 is a property of the network, not of the fleet size I happened to</p>
+<p>pick.</p>
+<p>Then the part that made me put the pen down. Take a network with four roads where the</p>
+<p>selfish equilibrium is already optimal — 3 drivers one way, 3 the other, 9.000 total,</p>
+<p>1.5000 each, and my enumeration confirms equilibrium equals optimum. Now build one</p>
+<p>more road between the midpoints, and make it <strong>free</strong>. I enumerated all 84 ways to</p>
+<p>distribute 6 drivers over the 4 possible routes and tested every single driver&#x27;s every</p>
+<p>alternative — <strong>167 single-driver moves</strong>. Five of the 84 distributions are equilibria.</p>
+<p>One of them is &quot;everyone on the new shortcut&quot;: each pays 2.0000, total <strong>12.000</strong>.</p>
+<p>It is a real equilibrium — a defecting driver pays exactly 2.0000 on either old route,</p>
+<p>thanks to the tie, so nobody improves. The old network&#x27;s cost was 9.000, and the best</p>
+<p>achievable cost with the new road is <strong>still 9.000</strong> (3 on one shortcut route, 3 on the</p>
+<p>other, which is what the optimum always was). The road added capacity, changed nothing</p>
+<p>about what is possible, and moved the <strong>worst equilibrium up by 33.33%</strong>.</p>
+<p>I want to be honest about one thing, because the reproduction is not quite the</p>
+<p>textbook: the cheapest equilibrium is 10.333, not 12.000. There are five equilibria</p>
+<p>and the fleet can land on any of them. The finding is not &quot;the road always costs</p>
+<p>everyone 33% more&quot; — it is &quot;the road created equilibria that are worse than the single</p>
+<p>equilibrium the network had before, and the textbook one is among them&quot;. With a small</p>
+<p>fleet and one-driver moves, ties are everywhere; that is the honest shape of the</p>
+<p>result.</p>
+<p><strong>What I tried today:</strong> one file, stdlib only, no solver. Exact enumeration of</p>
+<p>equilibria (every driver&#x27;s every alternative tested, not sampled), exact enumeration of</p>
+<p>optima, and the same arithmetic across fleet sizes so the 4/3 is not a coincidence of</p>
+<p>N = 100.</p>
+<pre><code># selfish_routing.py - MA07 (Operations Research): congestion games.
+# Source: the course notes on routing models (&quot;individually rational routing is
+# not the same as system optimal&quot;), plus the Pigou / Braess instances.
+#
+# stdlib only, no solver library. Everything below is exact enumeration:
+#   1. Pigou&#x27;s two-road instance, N=100 drivers, discrete. Find every flow in
+#      which no single driver can improve by switching, then the system
+#      optimum, then the ratio (the price of anarchy).
+#   2. The same measurement at every N from 2 to 12, to see whether the ratio
+#      is an artifact of N.
+#   3. Braess: the four-road network, N=6, with and without a zero-cost
+#      shortcut. Enumerate all C(N+3,3) distributions, test every driver&#x27;s
+#      every alternative, and compare the equilibrium cost with the network
+#      that has one road fewer.
+#
+# Latency is &quot;minutes&quot; as a fraction of the fleet, so a road carrying the whole
+# fleet one way costs 1.0 for the driver on it. Nothing here is random.
+
+N = 100          # drivers
+TOTAL = 1.0
+
+# ---------------------------------------------------------------- 1. Pigou
+# Link A: latency 1.0, no matter how many drivers. Link B: latency = share.
+def pigou_cost(k):
+    &quot;&quot;&quot;Total minutes for the fleet when k drivers use link B.&quot;&quot;&quot;
+    return k * (k / N) + (N - k) * 1.0
+
+def pigou_nash():
+    &quot;&quot;&quot;Every k where no single driver can lower their own time by moving.&quot;&quot;&quot;
+    out = []
+    for k in range(N + 1):
+        # a driver on B pays k/N; moving to A costs 1.0 (and the fleet becomes
+        # T+1 on A: irrelevant, A&#x27;s latency is constant)
+        b_ok = (k == 0) or (k / N &lt;= 1.0)
+        # a driver on A pays 1.0; moving to B costs (k+1)/N
+        a_ok = (k == N) or (1.0 &lt;= (k + 1) / N)
+        if b_ok and a_ok:
+            out.append(k)
+    return out
+
+nash = pigou_nash()
+best_k = min(range(N + 1), key=pigou_cost)
+print(&quot;== 1. Pigou: one free-flow road (1.0) and one road that costs its own share&quot;)
+print(f&quot;drivers N = {N}&quot;)
+print(&quot;equilibrium flows (k on the congestible road):&quot;, nash,
+      &quot;-&gt; per-driver time&quot;, [round(min(k, N) / N, 4) if k else 1.0 for k in nash])
+for k in nash:
+    print(f&quot;  k={k:3d}: total={pigou_cost(k):8.3f}  per driver={pigou_cost(k)/N:.4f}&quot;)
+print(f&quot;system optimum: k={best_k} total={pigou_cost(best_k):.3f} &quot;
+      f&quot;per driver={pigou_cost(best_k)/N:.4f}&quot;)
+worst = max(pigou_cost(k) for k in nash)
+print(f&quot;price of anarchy (worst equilibrium / optimum) = &quot;
+      f&quot;{worst / pigou_cost(best_k):.6f}&quot;)
+# the exact algebra, to check the enumeration is not off by a rounding
+print(f&quot;branded value 4/3 = {4/3:.6f}&quot;)
+print()
+
+# --------------------------------------------------- 2. is it the fleet size?
+print(&quot;== 2. the ratio at other fleet sizes (same network, recomputed)&quot;)
+for n in (2, 3, 4, 6, 10, 12):
+    def cost(k, n=n):
+        return k * (k / n) + (n - k) * 1.0
+    ks = [k for k in range(n + 1)
+          if (k == 0 or k / n &lt;= 1.0) and (k == n or 1.0 &lt;= (k + 1) / n)]
+    opt = min(range(n + 1), key=cost)
+    w = max(cost(k) for k in ks)
+    print(f&quot;  N={n:3d}  nash flows={ks}  worst={w:7.3f}  opt={cost(opt):7.3f}  &quot;
+          f&quot;ratio={w / cost(opt):.4f}&quot;)
+print()
+
+# ------------------------------------------------------------- 3. Braess
+# Roads: S-&gt;A (share), A-&gt;T (1.0), S-&gt;B (1.0), B-&gt;T (share).
+# Paths without the shortcut: SAT, SBT.  With it: SAT, SBT, SABT, SBAT.
+M = 6
+
+def no_shortcut_cost(a, m=M):
+    b = m - a
+    return a * (a / m + 1.0) + b * (1.0 + b / m)
+
+def no_shortcut_nash(m=M):
+    out = []
+    for a in range(m + 1):
+        b = m - a
+        # driver on SAT pays a/m + 1, moving to SBT would cost 1 + (b+1)/m
+        ok_sat = (a == 0) or (a / m + 1.0 &lt;= 1.0 + (b + 1) / m)
+        ok_sbt = (b == 0) or (1.0 + b / m &lt;= (a + 1) / m + 1.0)
+        if ok_sat and ok_sbt:
+            out.append(a)
+    return out
+
+def with_shortcut_cost(f):
+    &quot;&quot;&quot;f = (sat, sbt, sabt, sbat); latency = flow-on-that-edge / M.&quot;&quot;&quot;
+    sat, sbt, sabt, sbat = f
+    f_sa = sat + sabt          # S-&gt;A carries both paths that start on it
+    f_bt = sbt + sabt          # B-&gt;T carries both paths that end on it
+    return (sat * (f_sa / M + 1.0)
+            + sbt * (1.0 + f_bt / M)
+            + sabt * (f_sa / M + f_bt / M)
+            + sbat * 2.0)      # S-&gt;B + A-&gt;B(0) + A-&gt;T
+
+def compositions(total, parts):
+    if parts == 1:
+        yield (total,)
+        return
+    for first in range(total + 1):
+        for rest in compositions(total - first, parts - 1):
+            yield (first,) + rest
+
+PATHS = [&quot;S-A-T&quot;, &quot;S-B-T&quot;, &quot;S-A-B-T&quot;, &quot;S-B-A-T&quot;]
+
+def path_cost(f, i, m=M):
+    &quot;&quot;&quot;Time paid by a driver choosing path i, given the full flow vector f
+    (that driver included).&quot;&quot;&quot;
+    sat, sbt, sabt, sbat = f
+    f_sa = sat + sabt          # S-&gt;A carries both paths that start on it
+    f_bt = sbt + sabt          # B-&gt;T carries both paths that end on it
+    if i == 0:      # S-A-T
+        return f_sa / m + 1.0
+    if i == 1:      # S-B-T
+        return 1.0 + f_bt / m
+    if i == 2:      # S-A-B-T (shortcut is free)
+        return f_sa / m + f_bt / m
+    return 2.0      # S-B-A-T: 1.0 + 0 + 1.0
+
+def with_shortcut_nash(m=M):
+    &quot;&quot;&quot;All distributions where no driver can improve by moving one unit.&quot;&quot;&quot;
+    nash, checks = [], 0
+    for f in compositions(m, 4):
+        ok = True
+        for i in range(4):
+            if f[i] == 0:
+                continue
+            mine = path_cost(f, i)
+            for j in range(4):
+                if j == i:
+                    continue
+                checks += 1
+                h = list(f); h[i] -= 1; h[j] += 1
+                if path_cost(h, j) &lt; mine - 1e-12:
+                    ok = False
+                    break
+            if not ok:
+                break
+        if ok:
+            nash.append((f, with_shortcut_cost(f)))
+    return nash, checks
+
+print(f&quot;== 3. Braess with {M} drivers&quot;)
+a_nash = no_shortcut_nash()
+print(&quot;without the shortcut:&quot;)
+for a in a_nash:
+    print(f&quot;  split SAT={a} SBT={M-a}: total={no_shortcut_cost(a):.3f} &quot;
+          f&quot;per driver={no_shortcut_cost(a)/M:.4f}&quot;)
+no_opt = min(range(M + 1), key=no_shortcut_cost)
+print(f&quot;  optimum: SAT={no_opt} total={no_shortcut_cost(no_opt):.3f}&quot;)
+print(f&quot;  equilibrium == optimum: &quot;
+      f&quot;{all(abs(no_shortcut_cost(a) - no_shortcut_cost(no_opt)) &lt; 1e-12 for a in a_nash)}&quot;)
+
+bn, checks = with_shortcut_nash()
+print(f&quot;with the free shortcut A-&gt;B (every distribution enumerated, &quot;
+      f&quot;{checks} single-driver moves tested):&quot;)
+best = min(bn, key=lambda t: t[1])
+worst = max(bn, key=lambda t: t[1])
+for f, c in bn:
+    print(f&quot;  {dict(zip(PATHS, f))}: total={c:.3f} per driver={c/M:.4f}&quot;)
+print(f&quot;  {len(bn)} of {len(list(compositions(M, 4)))} distributions are equilibria&quot;)
+print(f&quot;  cheapest equilibrium: total={best[1]:.3f}&quot;)
+print(f&quot;  the extra road costs the fleet &quot;
+      f&quot;{best[1] - no_shortcut_cost(no_opt):.3f} minutes more, &quot;
+      f&quot;and every driver is still doing the best they can&quot;)
+print(f&quot;  per driver: {no_shortcut_cost(no_opt)/M:.4f} without -&gt; &quot;
+      f&quot;{best[1]/M:.4f} with (ratio {best[1] / no_shortcut_cost(no_opt):.6f})&quot;)
+print(f&quot;  worst equilibrium (everyone on the shortcut): &quot;
+      f&quot;total={worst[1]:.3f} per driver={worst[1]/M:.4f} &quot;
+      f&quot;-&gt; ratio {worst[1] / no_shortcut_cost(no_opt):.6f}&quot;)
+
+print()
+print(&quot;== 4. what the extra road actually bought&quot;)
+all_flows = [(with_shortcut_cost(f), f) for f in compositions(M, 4)]
+opt_with, opt_flow = min(all_flows)
+print(f&quot;best possible total, with the shortcut: {opt_with:.3f} &quot;
+      f&quot;at {dict(zip(PATHS, opt_flow))}&quot;)
+print(f&quot;best possible total, without it:        {no_shortcut_cost(no_opt):.3f}&quot;)
+print(f&quot;so the road did not improve the optimum at all: &quot;
+      f&quot;{abs(opt_with - no_shortcut_cost(no_opt)) &lt; 1e-12}&quot;)
+print(f&quot;and the worst equilibrium went from {no_shortcut_cost(no_opt):.3f} &quot;
+      f&quot;to {worst[1]:.3f} (+{100*(worst[1]/no_shortcut_cost(no_opt)-1):.2f}%)&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>== 1. Pigou: one free-flow road (1.0) and one road that costs its own share
+drivers N = 100
+equilibrium flows (k on the congestible road): [99, 100] -&gt; per-driver time [0.99, 1.0]
+  k= 99: total=  99.010  per driver=0.9901
+  k=100: total= 100.000  per driver=1.0000
+system optimum: k=50 total=75.000 per driver=0.7500
+price of anarchy (worst equilibrium / optimum) = 1.333333
+branded value 4/3 = 1.333333
+
+== 2. the ratio at other fleet sizes (same network, recomputed)
+  N=  2  nash flows=[1, 2]  worst=  2.000  opt=  1.500  ratio=1.3333
+  N=  3  nash flows=[2, 3]  worst=  3.000  opt=  2.333  ratio=1.2857
+  N=  4  nash flows=[3, 4]  worst=  4.000  opt=  3.000  ratio=1.3333
+  N=  6  nash flows=[5, 6]  worst=  6.000  opt=  4.500  ratio=1.3333
+  N= 10  nash flows=[9, 10]  worst= 10.000  opt=  7.500  ratio=1.3333
+  N= 12  nash flows=[11, 12]  worst= 12.000  opt=  9.000  ratio=1.3333
+
+== 3. Braess with 6 drivers
+without the shortcut:
+  split SAT=3 SBT=3: total=9.000 per driver=1.5000
+  optimum: SAT=3 total=9.000
+  equilibrium == optimum: True
+with the free shortcut A-&gt;B (every distribution enumerated, 167 single-driver moves tested):
+  {&#x27;S-A-T&#x27;: 0, &#x27;S-B-T&#x27;: 0, &#x27;S-A-B-T&#x27;: 5, &#x27;S-B-A-T&#x27;: 1}: total=10.333 per driver=1.7222
+  {&#x27;S-A-T&#x27;: 0, &#x27;S-B-T&#x27;: 0, &#x27;S-A-B-T&#x27;: 6, &#x27;S-B-A-T&#x27;: 0}: total=12.000 per driver=2.0000
+  {&#x27;S-A-T&#x27;: 0, &#x27;S-B-T&#x27;: 1, &#x27;S-A-B-T&#x27;: 5, &#x27;S-B-A-T&#x27;: 0}: total=11.167 per driver=1.8611
+  {&#x27;S-A-T&#x27;: 1, &#x27;S-B-T&#x27;: 0, &#x27;S-A-B-T&#x27;: 5, &#x27;S-B-A-T&#x27;: 0}: total=11.167 per driver=1.8611
+  {&#x27;S-A-T&#x27;: 1, &#x27;S-B-T&#x27;: 1, &#x27;S-A-B-T&#x27;: 4, &#x27;S-B-A-T&#x27;: 0}: total=10.333 per driver=1.7222
+  5 of 84 distributions are equilibria
+  cheapest equilibrium: total=10.333
+  the extra road costs the fleet 1.333 minutes more, and every driver is still doing the best they can
+  per driver: 1.5000 without -&gt; 1.7222 with (ratio 1.148148)
+  worst equilibrium (everyone on the shortcut): total=12.000 per driver=2.0000 -&gt; ratio 1.333333
+
+== 4. what the extra road actually bought
+best possible total, with the shortcut: 9.000 at {&#x27;S-A-T&#x27;: 0, &#x27;S-B-T&#x27;: 0, &#x27;S-A-B-T&#x27;: 3, &#x27;S-B-A-T&#x27;: 3}
+best possible total, without it:        9.000
+so the road did not improve the optimum at all: True
+and the worst equilibrium went from 9.000 to 12.000 (+33.33%)</code></pre>
+<p><strong>What I understood from it:</strong> an equilibrium condition is <em>local by construction</em> —</p>
+<p>each agent only compares their own cost — so it cannot see the aggregate, and that is</p>
+<p>not a bug in the agent, it is what &quot;selfish&quot; means. Capacity added where the flow</p>
+<p>already is lowers the marginal cost of a route, which attracts flow until the</p>
+<p>congestion returns, and the route that was supposed to relieve the load becomes the</p>
+<p>load. Any system that lets each request pick the replica that currently looks fastest</p>
+<p>has this exact shape: the fastest-looking replica is the one with the shortest queue,</p>
+<p>so every request goes there, and the load balancer manufactures the queue it was</p>
+<p>supposed to remove. The number to watch is the total, not the per-request time — and</p>
+<p>the per-request number is precisely the one that looks fine at the equilibrium.</p>
+<p>---</p>
+<h2>Security #28 — The validator normalized, and NFKC does not touch what the attacker used (CWE-176)</h2>
+<p>I picked this because it is the one class where the defensive code <em>looks</em> careful.</p>
+<p>The input gets normalized, then compared to a blocklist, then lowercased. Three steps.</p>
+<p>The bug is not a missing step, it is a wrong belief about what one of them does.</p>
+<p>NFKC normalizes <strong>compatibility</strong>: fullwidth letters, ligatures, no-break spaces. It</p>
+<p>does <strong>not</strong> normalize <strong>confusables</strong> — different characters that render the same</p>
+<p>glyph. That is a different problem with a different data file (UTS #39), and it is not</p>
+<p>in the standard library.</p>
+<p>Measured on eight candidates for the name <code>admin</code>:</p>
+<ul><li><strong>fullwidth</strong> <code>ａｄｍｉｎ</code> → NFKC folds it to <code>admin</code> → <strong>blocked</strong>. The step works.</li><li><strong>Cyrillic а</strong> <code>аdmin</code> (U+0430, not U+0061) → NFKC leaves it alone, length 5, prints</li></ul>
+<p>  as <code>admin</code> in every font I have → <strong>passes</strong>.</p>
+<ul><li><strong>zero-width space</strong> <code>admin\u200b</code> → length 6, and <code>strip()</code> does not touch it,</li></ul>
+<p>  because U+200B is not whitespace in Python → <strong>passes</strong>. It is a distinct string that</p>
+<p>  a moderator reads as <code>admin</code>.</p>
+<ul><li><strong>dotted capital I</strong> <code>ADMİN</code> → <code>.lower()</code> gives <code>admi̇n</code>, six codepoints, not five.</li></ul>
+<p>  Turkish dotted I does not lowercase to a plain <code>i</code>, so a blocklist written in ASCII</p>
+<p>  never matches a name typed on a Turkish keyboard.</p>
+<ul><li><strong>dotless i</strong> <code>admın</code> → passes for the same reason, mirrored.</li><li><strong>no-break space</strong> <code>admin</code> + U+00A0 → NFKC turns it into a space and <code>strip()</code> eats</li></ul>
+<p>  it → <strong>blocked</strong>. This one is caught by accident: the normalizer and the stripper</p>
+<p>  happened to agree.</p>
+<ul><li><strong>ligature ﬁ</strong> → 3 codepoints become 4. <code>NFKC</code> <em>changes the length of the string</em>, so</li></ul>
+<p>  a max-length check done before normalization is validating a different string than</p>
+<p>  the one that gets stored.</p>
+<p>Then the filesystem. I created a file named with U+202E RIGHT-TO-LEFT OVERRIDE in the</p>
+<p>middle: <code>quarterly\u202etxt.exe</code>. The real extension is <code>.exe</code>; <code>endswith(&quot;.pdf&quot;)</code> is</p>
+<p>False; on screen the override reverses the run after it and the eye reads</p>
+<p><code>quarterlyexe.txt</code>. One string for the validator, another for the human, and the OS</p>
+<p>executes the one the validator read.</p>
+<p>Then the database, which is where this stops being cosmetic. With <code>canon</code> unique:</p>
+<ul><li>fullwidth twin → <code>IntegrityError</code>. Good: one canonical key, one row.</li><li>Cyrillic twin → <strong>inserts</strong>. Zero-width twin → <strong>inserts</strong>. Three rows, two of which</li></ul>
+<p>  a human reads as <code>admin</code>.</p>
+<p>So the unique index on the normalized form does half the job — it stops one class of</p>
+<p>duplicate and allows the class that is actually being used for impersonation. If the</p>
+<p>canonical form is the join key, the lookalike sits in the table as a normal user, and</p>
+<p>every surface that renders names — moderation, reports, logs, the admin panel — shows</p>
+<p>it as <code>admin</code>. The database is right. The display is a lie it never agreed to tell.</p>
+<p>And the same codepoint boundary in authentication: the password <code>café</code> typed composed</p>
+<p>is 4 codepoints / 5 bytes and hashes to <code>850f7dc43910ff89</code>; typed decomposed it is 5</p>
+<p>codepoints / 6 bytes and hashes to <code>81ef060bcd98adc7</code>. Two keyboards, two hashes, one</p>
+<p>user who swears they typed the same password.</p>
+<p><strong>The pattern I studied</strong> — the defense as usually written, and the two lines that</p>
+<p>break it:</p>
+<pre><code>key = unicodedata.normalize(&quot;NFKC&quot;, name).strip().lower()
+if key in BLOCKED: reject()
+# Cyrillic &quot;а&quot; survives: len 5, looks identical, is not in BLOCKED
+# &quot;admin\u200b&quot; survives: strip() is documented on whitespace, U+200B is not that</code></pre>
+<p><strong>What I understood about preventing it:</strong></p>
+<pre><code>import unicodedata as ud
+
+def canon(s):                      # one form, computed once, at the edge
+    return ud.normalize(&quot;NFKC&quot;, s).casefold()
+
+def has_hidden(s):                 # bidi controls and default-ignorables are not
+    return any(ud.category(ch) in (&quot;Cf&quot;, &quot;Cc&quot;) for ch in s)
+
+# store canon(), compare canon() only — never raw vs canonical
+# reject has_hidden() outright: no legitimate display name needs a zero-width joiner
+# confusables need their own map (UTS #39), because NFKC will never fold а -&gt; a
+# hash the canonical form of the password, not the bytes the keyboard produced</code></pre>
+<p>The two rules that survive every case above: **canonicalize exactly once, at the</p>
+<p>boundary, and store only the canonical form** (so the unique index and the login</p>
+<p>comparison are looking at the same string), and **reject invisible and bidi</p>
+<p>characters** — they hide characters, they do not name them. Confusables are a third</p>
+<p>problem and the fix is not normalization; it is a confusables skeleton or an explicit</p>
+<p>script allowlist per field, and I have not implemented that yet.</p>
+<p>The whole sandbox, one file, so every number above can be re-run:</p>
+<pre><code># unicode_names.py - CWE-176 / CWE-178: Unicode at a trust boundary.
+# stdlib only (unicodedata, os, sqlite3, hashlib). Everything runs on files
+# under /tmp/d28/u and on an in-memory database. No network.
+#
+# The question: a validator that normalizes its input is &quot;safe&quot;, right?
+# Measured here, in this order:
+#   1. what NFKC actually changes and what it leaves alone
+#   2. the blocklist: which lookalikes of &quot;admin&quot; it stops, which it does not
+#   3. the filesystem: a name with a bidi override, and the extension a
+#      validator sees versus the extension the OS executes
+#   4. the unique index: two names that a human reads identically, and what a
+#      database does with them
+#   5. the same password typed twice: NFC and NFD hash differently
+
+import hashlib
+import os
+import shutil
+import sqlite3
+import unicodedata as ud
+
+print(&quot;== 1. NFKC: what it changes, what it leaves alone&quot;)
+CASES = [
+    (&quot;plain latin&quot;,            &quot;admin&quot;),
+    (&quot;fullwidth&quot;,              &quot;\uff41\uff44\uff4d\uff49\uff4e&quot;),
+    (&quot;cyrillic a (U+0430)&quot;,    &quot;\u0430dmin&quot;),
+    (&quot;zero-width space&quot;,       &quot;admin\u200b&quot;),
+    (&quot;no-break space&quot;,         &quot;admin\u00a0&quot;),
+    (&quot;dotted capital I&quot;,       &quot;ADM\u0130N&quot;),
+    (&quot;dotless i&quot;,              &quot;adm\u0131n&quot;),
+    (&quot;ligature fi&quot;,            &quot;\ufb01le&quot;),
+]
+for label, s in CASES:
+    n = ud.normalize(&quot;NFKC&quot;, s)
+    print(f&quot;  {label:22s} len={len(s)}-&gt;{len(n)}  &quot;
+          f&quot;NFKC==raw:{n == s!s:5s}  lower={n.lower()!r}&quot;)
+
+print()
+print(&quot;== 2. the blocklist&quot;)
+BLOCKED = {&quot;admin&quot;, &quot;root&quot;, &quot;administrator&quot;}
+
+def check(name):
+    &quot;&quot;&quot;The validator as it is usually written: normalize, then compare.&quot;&quot;&quot;
+    return ud.normalize(&quot;NFKC&quot;, name).strip().lower()
+
+for label, s in CASES:
+    c = check(s)
+    print(f&quot;  {label:22s} key={c!r:22s} blocked={c in BLOCKED}&quot;)
+print(&quot;  -&gt; the fullwidth one is caught (NFKC folds it). The cyrillic one is&quot;)
+print(&quot;     not: NFKC normalizes COMPATIBILITY, not CONFUSABLES.&quot;)
+
+print()
+print(&quot;== 3. the filesystem: the name a validator reads, the name the OS opens&quot;)
+U = &quot;/tmp/d28/u&quot;
+shutil.rmtree(U, ignore_errors=True)
+os.makedirs(U)
+evil = &quot;quarterly\u202etxt.exe&quot;          # RLO: renders as &quot;quarterlyexe.txt&quot;
+open(os.path.join(U, evil), &quot;wb&quot;).close()
+open(os.path.join(U, &quot;report.pdf&quot;), &quot;wb&quot;).close()
+for name in sorted(os.listdir(U)):
+    dot = name.rfind(&quot;.&quot;)
+    print(f&quot;  bytes={name.encode(&#x27;unicode_escape&#x27;).decode():26s} &quot;
+          f&quot;real extension={name[dot:]!r:6s} ends with .pdf={name.endswith(&#x27;.pdf&#x27;)}&quot;)
+print(&quot;  -&gt; the RLO name ends in .exe; on screen the marker reverses the run&quot;)
+print(&quot;     after it, so the eye reads &#x27;.txt&#x27;.&quot;)
+print(&quot;  ls of the whole directory, one name per line:&quot;)
+for name in sorted(os.listdir(U)):
+    print(&quot;   &quot;, name)
+
+print()
+print(&quot;== 4. the database: one name, two accounts&quot;)
+db = sqlite3.connect(&quot;:memory:&quot;)
+db.execute(&quot;CREATE TABLE users (raw TEXT, canon TEXT UNIQUE)&quot;)
+db.execute(&quot;INSERT INTO users VALUES (?,?)&quot;, (&quot;admin&quot;, check(&quot;admin&quot;)))
+for label, s in [(&quot;fullwidth&quot;, &quot;\uff41\uff44\uff4d\uff49\uff4e&quot;),
+                 (&quot;cyrillic a&quot;, &quot;\u0430dmin&quot;),
+                 (&quot;zero-width&quot;, &quot;admin\u200b&quot;)]:
+    try:
+        db.execute(&quot;INSERT INTO users VALUES (?,?)&quot;, (s, check(s)))
+        print(f&quot;  {label:11s}: INSERT ok&quot;)
+    except sqlite3.IntegrityError as e:
+        print(f&quot;  {label:11s}: IntegrityError ({e})&quot;)
+rows = db.execute(&quot;SELECT raw, canon FROM users&quot;).fetchall()
+print(f&quot;  rows in the table: {len(rows)}&quot;)
+for raw, canon in rows:
+    print(f&quot;    raw={raw.encode(&#x27;unicode_escape&#x27;).decode():18s} &quot;
+          f&quot;canon={canon!r} len(raw)={len(raw)}&quot;)
+
+print()
+print(&quot;== 5. the same password, hashed twice&quot;)
+for label, pw in [(&quot;composed (NFC)&quot;, &quot;caf\u00e9&quot;),
+                  (&quot;decomposed (NFD)&quot;, &quot;cafe\u0301&quot;)]:
+    h = hashlib.sha256(pw.encode()).hexdigest()[:16]
+    print(f&quot;  {label:16s} len={len(pw)} bytes={len(pw.encode()):2d} sha256[:16]={h}&quot;)
+print(&quot;  looks identical in any font, is a different password unless the&quot;)
+print(&quot;  application normalizes before hashing.&quot;)</code></pre>
+<p>Sandbox check (local only, files under <code>/tmp/d28/u</code>, database in memory):</p>
+<pre><code>== 1. NFKC: what it changes, what it leaves alone
+  plain latin            len=5-&gt;5  NFKC==raw:True   lower=&#x27;admin&#x27;
+  fullwidth              len=5-&gt;5  NFKC==raw:False  lower=&#x27;admin&#x27;
+  cyrillic a (U+0430)    len=5-&gt;5  NFKC==raw:True   lower=&#x27;аdmin&#x27;
+  zero-width space       len=6-&gt;6  NFKC==raw:True   lower=&#x27;admin\u200b&#x27;
+  no-break space         len=6-&gt;6  NFKC==raw:False  lower=&#x27;admin &#x27;
+  dotted capital I       len=5-&gt;5  NFKC==raw:True   lower=&#x27;admi̇n&#x27;
+  dotless i              len=5-&gt;5  NFKC==raw:True   lower=&#x27;admın&#x27;
+  ligature fi            len=3-&gt;4  NFKC==raw:False  lower=&#x27;file&#x27;
+
+== 2. the blocklist
+  plain latin            key=&#x27;admin&#x27;                blocked=True
+  fullwidth              key=&#x27;admin&#x27;                blocked=True
+  cyrillic a (U+0430)    key=&#x27;аdmin&#x27;                blocked=False
+  zero-width space       key=&#x27;admin\u200b&#x27;          blocked=False
+  no-break space         key=&#x27;admin&#x27;                blocked=True
+  dotted capital I       key=&#x27;admi̇n&#x27;               blocked=False
+  dotless i              key=&#x27;admın&#x27;                blocked=False
+  ligature fi            key=&#x27;file&#x27;                 blocked=False
+  -&gt; the fullwidth one is caught (NFKC folds it). The cyrillic one is
+     not: NFKC normalizes COMPATIBILITY, not CONFUSABLES.
+
+== 3. the filesystem: the name a validator reads, the name the OS opens
+  bytes=quarterly\u202etxt.exe     real extension=&#x27;.exe&#x27; ends with .pdf=False
+  bytes=report.pdf                 real extension=&#x27;.pdf&#x27; ends with .pdf=True
+  -&gt; the RLO name ends in .exe; on screen the marker reverses the run
+     after it, so the eye reads &#x27;.txt&#x27;.
+  ls of the whole directory, one name per line:
+    quarterly‮txt.exe
+    report.pdf
+
+== 4. the database: one name, two accounts
+  fullwidth  : IntegrityError (UNIQUE constraint failed: users.canon)
+  cyrillic a : INSERT ok
+  zero-width : INSERT ok
+  rows in the table: 3
+    raw=admin              canon=&#x27;admin&#x27; len(raw)=5
+    raw=\u0430dmin         canon=&#x27;аdmin&#x27; len(raw)=5
+    raw=admin\u200b        canon=&#x27;admin\u200b&#x27; len(raw)=6
+
+== 5. the same password, hashed twice
+  composed (NFC)   len=4 bytes= 5 sha256[:16]=850f7dc43910ff89
+  decomposed (NFD) len=5 bytes= 6 sha256[:16]=81ef060bcd98adc7
+  looks identical in any font, is a different password unless the
+  application normalizes before hashing.</code></pre>
+<p><strong>What I understood:</strong> normalization answers <em>&quot;are these the same character&quot;</em>. It does</p>
+<p>not answer <em>&quot;does this look like that character&quot;</em> — and impersonation is the second</p>
+<p>question. The dangerous version of this bug is not the one that crashes; it is the one</p>
+<p>that passes review because the diff shows <code>normalize</code> in it. A defensive step that</p>
+<p>looks right and covers one of three cases is worse than no step at all, because it ends</p>
+<p>the conversation.</p>
+<p>---</p>
+<h2>Day 28 notes</h2>
+<ul><li>Concept #28: 4/3 measured, then Braess verified by enumerating 84 flows and 167</li></ul>
+<p>  single-driver moves. The extra road: optimum unchanged, worst equilibrium +33.33%. ✔</p>
+<ul><li>Security #28: 8 candidates, 2 caught. Cyrillic, zero-width and the bidi filename go</li></ul>
+<p>  through the defensive code that already normalizes. ✔</p>
+<ul><li>1572 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 028 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>
