@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 030 — The heuristic never lied, and the route was still worse · Matías Rathgeb</title>
+<meta name="description" content="Day 030 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 030 OF 1600 · 2026-11-04</p>
+    <h1>Day 030 — The heuristic never lied, and the route was still worse</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-11-04 · <strong>Day:</strong> 30 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #30 — Admissibility buys optimality only if nothing is written off</h2>
+<p>MA08, Intelligent Search, week 1. The lecture opens with the distinction everybody nods at</p>
+<p>and nobody uses: a <strong>state</strong> is a configuration of the world, a <strong>node</strong> is a bookkeeping</p>
+<p>object in the search tree — state plus parent, action, depth, accumulated cost <code>g</code>. Two</p>
+<p>nodes can hold the same state reached by different routes. Because of that, graph search</p>
+<p>keeps an <strong>explored set</strong> and refuses to expand a state twice, while tree search does not</p>
+<p>and can loop forever on a cycle. That was the week-1 exam trap, word for word: *the search</p>
+<p>tree is not the state space*.</p>
+<p>Then the heuristic. The textbook line is <code>f(n) = g(n) + h(n)</code>, admissibility is</p>
+<p><code>h(n) ≤ h<em>(n)</code> — never overestimate — and A</em> with an admissible heuristic is optimal. I</p>
+<p>had accepted that sentence for a year. It is incomplete, and the missing half is exactly</p>
+<p>the thing the explored set does.</p>
+<p>Admissibility is a statement about <strong>one node at a time</strong>: my guess about the remaining</p>
+<p>cost is not a lie. Consistency is a statement about **two nodes and the edge between</p>
+<p>them**: <code>h(u) ≤ c(u,v) + h(v)</code> — the guess cannot drop faster than the cost of actually</p>
+<p>walking there. If the second holds, <code>f</code> never decreases along a path, nodes are popped in</p>
+<p>non-decreasing <code>f</code>, and the first time a state enters the explored set it enters with its</p>
+<p>optimal <code>g</code>. Written off, and correctly so. If only the first holds, a state can be closed</p>
+<p>with a <code>g</code> that is not yet optimal, and the cheaper route arrives later to a door that is</p>
+<p>already shut.</p>
+<p>So I stopped reading and measured it. Random directed graphs, 6 to 9 nodes, integer edge</p>
+<p>costs 1 to 5, <code>h*(n)</code> computed exactly with Dijkstra on the reversed graph, and then a</p>
+<p>heuristic drawn uniformly from <code>[0, h*(n)]</code>. Every one of those heuristics is admissible</p>
+<p><strong>by construction</strong> — it is a number between zero and the truth, it cannot overestimate.</p>
+<p>Then two A* implementations, identical except for one line: whether a state that already</p>
+<p>sits in the explored set can be expanded again.</p>
+<p><strong>What I tried today:</strong> one file, stdlib only. Random graph generator, exact <code>h*</code>,</p>
+<p>a consistency checker, A* with and without re-opening closed states, and a 40×40 grid with</p>
+<p>walls where the same search runs under three heuristics while counting expansions.</p>
+<pre><code>#!/usr/bin/env python3
+&quot;&quot;&quot;MA08 Intelligent Search, week 1.
+One idea: an admissible heuristic only buys optimality if the search is allowed
+to revisit a state it already closed. Consistency is what makes the closed set safe.
+
+stdlib only. No network.
+&quot;&quot;&quot;
+import heapq
+import random
+
+
+# ---------------------------------------------------------------- graph search
+def hstar(adj, rev, goal):
+    &quot;&quot;&quot;True remaining cost to goal, via Dijkstra on the reversed graph.&quot;&quot;&quot;
+    dist = {goal: 0}
+    pq = [(0, goal)]
+    while pq:
+        d, u = heapq.heappop(pq)
+        if d &gt; dist.get(u, float(&quot;inf&quot;)):
+            continue
+        for p, c in rev.get(u, []):
+            nd = d + c
+            if nd &lt; dist.get(p, float(&quot;inf&quot;)):
+                dist[p] = nd
+                heapq.heappush(pq, (nd, p))
+    return dist
+
+
+def astar(adj, start, goal, h, reopen):
+    &quot;&quot;&quot;A* graph search. reopen=False is the textbook version: once a state
+    enters the closed set it is never expanded again.&quot;&quot;&quot;
+    gbest = {start: 0}
+    parent = {start: None}
+    pq = [(h.get(start, 0), 0, start, 0)]
+    closed, expanded, tie = set(), 0, 1
+    while pq:
+        f, _, u, g = heapq.heappop(pq)
+        if g &gt; gbest.get(u, float(&quot;inf&quot;)):
+            continue                      # stale entry, a cheaper route exists
+        if u in closed and not reopen:
+            continue                      # the explored set, no second chance
+        if u == goal:
+            path = []
+            while u is not None:
+                path.append(u)
+                u = parent[u]
+            return g, expanded, path[::-1]
+        closed.add(u)
+        expanded += 1
+        for v, c in adj.get(u, []):
+            if v in closed and not reopen:
+                continue
+            ng = g + c
+            if ng &lt; gbest.get(v, float(&quot;inf&quot;)):
+                gbest[v] = ng
+                parent[v] = u
+                heapq.heappush(pq, (ng + h.get(v, 0), tie, v, ng))
+                tie += 1
+    return None, expanded, None
+
+
+def is_consistent(adj, h):
+    for u, edges in adj.items():
+        for v, c in edges:
+            if h.get(u, 0) &gt; c + h.get(v, 0):
+                return False
+    return True
+
+
+# -------------------------------------------------------------------- witness
+def random_instance(rng, n):
+    nodes = list(range(n))
+    adj = {u: [] for u in nodes}
+    for u in nodes:
+        for v in nodes:
+            if u != v and rng.random() &lt; 0.45:
+                adj[u].append((v, rng.randint(1, 5)))
+    rev = {u: [] for u in nodes}
+    for u in nodes:
+        for v, c in adj[u]:
+            rev[v].append((u, c))
+    goal = n - 1
+    d = hstar(adj, rev, goal)
+    if len(d) != n:                      # keep only instances where every node reaches goal
+        return None
+    # admissible by construction: every estimate sits somewhere in [0, h*]
+    h = {u: rng.randint(0, d[u]) for u in nodes}
+    h[goal] = 0
+    return adj, h, d, goal
+
+
+def main():
+    rng = random.Random(20261104)
+    tried = inconsistent = witnesses = 0
+    first = None
+    for _ in range(20000):
+        inst = random_instance(rng, rng.randint(6, 9))
+        if inst is None:
+            continue
+        adj, h, d, goal = inst
+        tried += 1
+        cons = is_consistent(adj, h)
+        if not cons:
+            inconsistent += 1
+        best, _, _ = astar(adj, 0, goal, h, reopen=True)
+        bad, _, bad_path = astar(adj, 0, goal, h, reopen=False)
+        if best != d[0]:
+            raise SystemExit(&quot;reopen A* is not optimal -- implementation bug&quot;)
+        if bad != best:
+            if cons:
+                raise SystemExit(&quot;consistency is supposed to protect the closed set&quot;)
+            witnesses += 1
+            if first is None:
+                first = (adj, h, d, goal, bad, best, bad_path)
+
+    adj, h, d, goal, bad, best, bad_path = first
+    print(&quot;== 1. admissible heuristic + closed set, 20000 random graphs&quot;)
+    print(f&quot;   instances checked            : {tried}&quot;)
+    print(f&quot;   heuristics inconsistent      : {inconsistent} &quot;
+          f&quot;({inconsistent/tried:.1%}) -- all of them still admissible&quot;)
+    print(f&quot;   reopen A* optimal            : {tried}/{tried} (asserted)&quot;)
+    print(f&quot;   closed-set A* SUBOPTIMAL     : {witnesses} &quot;
+          f&quot;({witnesses/tried:.2%} of all, {witnesses/inconsistent:.2%} of the inconsistent ones)&quot;)
+    print(f&quot;   closed-set A* wrong on a consistent heuristic: 0 (asserted)&quot;)
+    print()
+    print(&quot;   first witness (start=0, goal=%d), reached path %s for %d, optimal %d:&quot;
+          % (goal, bad_path, bad, d[0]))
+    for u in sorted(adj):
+        for v, c in adj[u]:
+            note = &quot;CONSISTENCY BREAKS HERE&quot; if h[u] &gt; c + h[v] else &quot;&quot;
+            print(f&quot;     {u} -&gt; {v}  cost {c}   h({u})={h[u]}  h({v})={h[v]}  {note}&quot;)
+    print(f&quot;   closed-set A* returned {bad}, optimal is {d[0]}\n&quot;)
+
+    # ---------------------------------------------------------- grid, counted
+    print(&quot;== 2. same search, a 40x40 grid with walls, three heuristics&quot;)
+    size, walls = 40, 0.22
+    g_rng = random.Random(7)
+    blocked = {(x, y) for x in range(size) for y in range(size)
+               if g_rng.random() &lt; walls and (x, y) not in ((0, 0), (size-1, size-1))}
+    start, target = (0, 0), (size - 1, size - 1)
+
+    def moves(p):
+        x, y = p
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            q = (x + dx, y + dy)
+            if 0 &lt;= q[0] &lt; size and 0 &lt;= q[1] &lt; size and q not in blocked:
+                yield q, 1
+
+    def manhattan(p):
+        return abs(p[0] - target[0]) + abs(p[1] - target[1])
+
+    adj_g = {}
+    for x in range(size):
+        for y in range(size):
+            if (x, y) not in blocked:
+                adj_g[(x, y)] = list(moves((x, y)))
+
+    rows = []
+    for name, fn, scale in ((&quot;UCS (h=0)&quot;, None, 0),
+                            (&quot;A* manhattan&quot;, manhattan, 1),
+                            (&quot;A* 3x manhattan&quot;, manhattan, 3)):
+        h = {p: 0 for p in adj_g} if fn is None else {p: scale * fn(p) for p in adj_g}
+        cost, exp, _ = astar(adj_g, start, target, h, reopen=False)
+        rows.append((name, cost, exp, is_consistent(adj_g, h)))
+
+    base = rows[0]
+    for name, cost, exp, cons in rows:
+        tag = &quot;&quot; if cost == base[1] else &quot;  &lt;-- NOT the cheapest path&quot;
+        print(f&quot;   {name:16s} cost {cost:4d}  expanded {exp:5d}  consistent {str(cons):5s}{tag}&quot;)
+    print(f&quot;   cheapest path cost          : {base[1]} (UCS is the baseline)&quot;)
+    print(f&quot;   A* manhattan expands        : {rows[1][2]} nodes, &quot;
+          f&quot;{100*(1-rows[1][2]/base[2]):.1f}% fewer than UCS, same cost&quot;)
+    print(f&quot;   A* 3x manhattan expands     : {rows[2][2]} nodes, &quot;
+          f&quot;{(1-rows[2][2]/rows[1][2])*100:.1f}% fewer than manhattan A*, &quot;
+          f&quot;cost {rows[2][1]} vs {base[1]}&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    main()</code></pre>
+<p>Real output:</p>
+<pre><code>== 1. admissible heuristic + closed set, 20000 random graphs
+   instances checked            : 16703
+   heuristics inconsistent      : 12979 (77.7%) -- all of them still admissible
+   reopen A* optimal            : 16703/16703 (asserted)
+   closed-set A* SUBOPTIMAL     : 82 (0.49% of all, 0.63% of the inconsistent ones)
+   closed-set A* wrong on a consistent heuristic: 0 (asserted)
+
+   first witness (start=0, goal=5), reached path [0, 4, 2, 5] for 12, optimal 11:
+     0 -&gt; 3  cost 3   h(0)=7  h(3)=8  
+     0 -&gt; 4  cost 5   h(0)=7  h(4)=0  CONSISTENCY BREAKS HERE
+     1 -&gt; 5  cost 1   h(1)=1  h(5)=0  
+     2 -&gt; 0  cost 4   h(2)=2  h(0)=7  
+     2 -&gt; 3  cost 2   h(2)=2  h(3)=8  
+     2 -&gt; 4  cost 2   h(2)=2  h(4)=0  
+     2 -&gt; 5  cost 3   h(2)=2  h(5)=0  
+     3 -&gt; 0  cost 1   h(3)=8  h(0)=7  
+     3 -&gt; 4  cost 1   h(3)=8  h(4)=0  CONSISTENCY BREAKS HERE
+     4 -&gt; 2  cost 4   h(4)=0  h(2)=2  
+     4 -&gt; 3  cost 4   h(4)=0  h(3)=8  
+     5 -&gt; 1  cost 4   h(5)=0  h(1)=1  
+     5 -&gt; 2  cost 5   h(5)=0  h(2)=2  
+     5 -&gt; 3  cost 4   h(5)=0  h(3)=8  
+   closed-set A* returned 12, optimal is 11
+
+== 2. same search, a 40x40 grid with walls, three heuristics
+   UCS (h=0)        cost   78  expanded  1228  consistent True 
+   A* manhattan     cost   78  expanded   514  consistent True 
+   A* 3x manhattan  cost   82  expanded   101  consistent False  &lt;-- NOT the cheapest path
+   cheapest path cost          : 78 (UCS is the baseline)
+   A* manhattan expands        : 514 nodes, 58.1% fewer than UCS, same cost
+   A* 3x manhattan expands     : 101 nodes, 80.4% fewer than manhattan A*, cost 82 vs 78</code></pre>
+<p><strong>What I understood from it:</strong> three numbers, and none of them is the one I expected.</p>
+<p>First: <strong>77.7%</strong> of the admissible heuristics were inconsistent. Admissible is not rare, and</p>
+<p>it is also not enough — nearly four out of five honest heuristics break the property that</p>
+<p>makes a closed set safe. That is not a technicality about pathological examples; it is the</p>
+<p>common case.</p>
+<p>Second: the closed-set version returned a worse route on <strong>82 of 16,703</strong> instances</p>
+<p>(0.49%), and on <strong>0.63%</strong> of the inconsistent ones. Small, and permanent. The witness is</p>
+<p>five nodes: it walked <code>0 → 4 → 2 → 5</code> for <strong>12</strong> when <strong>11</strong> was available, because the</p>
+<p>edge <code>0 → 4</code> costs 5 while <code>h(0) = 7</code> and <code>h(4) = 0</code>, so the estimate fell by 7 across an</p>
+<p>edge that costs 5. Node 4 was closed at <code>g = 5</code>; the better prefix <code>0 → 3 → 4</code> (cost 4)</p>
+<p>arrived afterwards and found node 4 already in the explored set. The same search with</p>
+<p>re-opening was optimal on <strong>all 16,703</strong>, and on the consistent heuristics the closed set</p>
+<p>never once cost me a single unit. So consistency is not a stronger form of admissibility</p>
+<p>to be proved &quot;if you have time&quot;: it is the exact condition under which forgetting is free.</p>
+<p>Third, the grid, because expansions are the currency I actually spend. Cheapest path 78</p>
+<p>steps. Uniform-cost search expanded <strong>1228</strong> states. A* with Manhattan distance expanded</p>
+<p><strong>514</strong> — 58.1% fewer, same 78. A* with 3× Manhattan, which is inadmissible, expanded</p>
+<p><strong>101</strong> — another 80.4% fewer, and the path costs <strong>82</strong>. So the trade is real and it is</p>
+<p>priced: 80% of the work saved for 5% of the route. That is a good trade for a robot</p>
+<p>delivering samples and a bad trade for a router billing by the metre, and the difference</p>
+<p>between the two is a line of code nobody thinks to check.</p>
+<p>The sentence I will keep from today: **a heuristic is a claim about the future, and a</p>
+<p>closed set is a decision to stop listening.** Admissibility constrains the claim.</p>
+<p>Consistency is what makes the decision safe. If you cannot prove consistency, do not</p>
+<p>delete the re-open branch — it costs a heap operation, not a rewrite.</p>
+<p>---</p>
+<h2>Security #30 — The greeting was a program, because the template was built from it (CWE-1336)</h2>
+<p>Different bug class today, and a modern one: server-side template injection. The story is</p>
+<p>always the same shape. Somebody wants a personalised message, and the code that starts as</p>
+<pre><code>render(&quot;Hello, &quot; + request.args[&quot;name&quot;] + &quot;!&quot;)</code></pre>
+<p>is not a string formatting call. <code>render</code> parses its argument as a <strong>program</strong>. The</p>
+<p>attacker&#x27;s text stops being data the moment it is concatenated into the source, exactly</p>
+<p>like SQL string building — except the language here is Turing-complete, has access to</p>
+<p>Python introspection, and every object in the process is reachable through <code>__class__</code>,</p>
+<p><code>__mro__</code>, <code>__subclasses__</code> and <code>__globals__</code>. <code>{{7*7}}</code> is the fingerprint; the chain that</p>
+<p>follows is not clever, it is just <code>cycler.__init__.__globals__.os.popen(...)</code> and the</p>
+<p>process runs what you typed.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code># the bug, in one line and in the shape it really ships
+def render_concat(text):
+    return jinja2.Environment().from_string(&quot;Hello, &quot; + text + &quot;!&quot;).render()
+
+render_concat(&quot;{{cycler.__init__.__globals__.os.popen(&#x27;echo RAN&#x27;).read()}}&quot;)</code></pre>
+<p><strong>What I understood about preventing it:</strong></p>
+<pre><code># the fix: the template is a constant, the user&#x27;s text is a value
+TEMPLATE = jinja2.Environment(undefined=jinja2.StrictUndefined) \
+    .from_string(&quot;Hello, {{ name }}!&quot;)
+
+TEMPLATE.render(name=user_text)          # {{7*7}} stays a literal, evaluated never
+
+# the second fence, for when a template really must come from outside:
+from jinja2.sandbox import SandboxedEnvironment
+SandboxedEnvironment().from_string(user_text).render()</code></pre>
+<p>Sandbox check (local only):</p>
+<pre><code>== 1. one string, three renderers
+
+   A concat (bug)
+     arithmetic   EVALUATED                  Hello, 49!
+     config leak  EVALUATED                  Hello, &lt;class &#x27;_sitebuiltins._Helper&#x27;&gt;!
+     rce          EVALUATED                  Hello, RAN !
+     shadow read  EVALUATED                  Hello, LEAK-OK !
+
+   B variable (fix)
+     arithmetic   inert (rendered as text)   Hello, {{7*7}}!
+     config leak  inert (rendered as text)   Hello, {{self.__init__.__globals__[&#x27;__builtins__&#x27;][&#x27;help&#x27;]._
+     rce          inert (rendered as text)   Hello, {{cycler.__init__.__globals__.os.popen(&#x27;echo RAN&#x27;).re
+     shadow read  inert (rendered as text)   Hello, {{lipsum.__globals__[&#x27;os&#x27;].popen(&#x27;echo LEAK-OK&#x27;).read
+
+   C sandbox
+     arithmetic   EVALUATED                  Hello, 49!
+     config leak  blocked: SecurityError     access to attribute &#x27;__init__&#x27; of &#x27;TemplateReference&#x27; object
+     rce          blocked: SecurityError     access to attribute &#x27;__init__&#x27; of &#x27;type&#x27; object is unsafe.
+     shadow read  blocked: SecurityError     access to attribute &#x27;__globals__&#x27; of &#x27;function&#x27; object is un
+
+== 2. what actually happened in A
+   input : {{cycler.__init__.__globals__.os.popen(&#x27;echo RAN&#x27;).read()}}
+   output: Hello, RAN
+!
+   len   : 12 chars -- the renderer returned the shell&#x27;s stdout, newline and all
+
+== 3. the same payload where the value is data, not source
+   input : {{7*7}}
+   B out : Hello, {{7*7}}!
+   B out : Hello, {{cycler.__init__.__globals__.os....
+
+== 4. sandbox verdict
+   SecurityError: access to attribute &#x27;__init__&#x27; of &#x27;type&#x27; object is unsafe.</code></pre>
+<p><strong>What I understood:</strong> the fix and the fence are not the same thing, and the numbers show</p>
+<p>it. Concatenation evaluated <strong>4 of 4</strong> payloads, including a real <code>popen</code> that returned</p>
+<p>the shell&#x27;s stdout into the page — that is not a theoretical RCE, that is the renderer</p>
+<p>handing me the process. Passing the same text as a variable evaluated <strong>0 of 4</strong>: the</p>
+<p>braces come back as braces, because the parser only ever saw the constant template.</p>
+<p>The <code>SandboxedEnvironment</code> blocked <strong>3 of 4</strong> with <code>SecurityError</code> on <code>__init__</code>,</p>
+<p><code>__globals__</code>, <code>__subclasses__</code> — but it still evaluated <code>{{7*7}}</code> to <code>49</code>, and that is the</p>
+<p>whole lesson: a sandbox is a fence around a language, not a substitute for keeping the</p>
+<p>user&#x27;s text out of the source. Every template engine has a &quot;user-supplied template&quot;</p>
+<p>feature and every one of them is a code-execution endpoint with a nicer name. The</p>
+<p>defensible rule is narrower than &quot;sanitise the input&quot;: **the template string is source,</p>
+<p>and source does not come from the request.**</p>
+<p>---</p>
+<h2>Day 30 notes</h2>
+<ul><li>Concept #30: MA08 week 1, admissibility vs consistency, measured. 16,703 random graphs,</li></ul>
+<p>  heuristics admissible by construction, <strong>77.7%</strong> inconsistent. Re-open A*: optimal</p>
+<p>  16,703/16,703. Closed-set A*: suboptimal on <strong>82</strong> (0.49%), worst witness 12 vs 11 on a</p>
+<p>  five-node graph, and 0 failures on consistent heuristics. Grid 40×40, cheapest 78: UCS</p>
+<p>  1228 expansions, Manhattan A* 514 (−58.1%), 3× Manhattan 101 (−80.4%) at cost 82. ✔</p>
+<ul><li>Security #30: SSTI. Concatenated template 4/4 payloads evaluated including a real shell</li></ul>
+<p>  call; variable-in-static-template 0/4; sandbox 3/4 blocked and still evaluated the</p>
+<p>  arithmetic. Template is source, request is data. ✔</p>
+<ul><li>1570 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 030 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>
