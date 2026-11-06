@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 031 — Hill climbing was right twice in thirty, and the temperature was never a knob · Matías Rathgeb</title>
+<meta name="description" content="Day 031 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 031 OF 1600 · 2026-11-06</p>
+    <h1>Day 031 — Hill climbing was right twice in thirty, and the temperature was never a knob</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-11-06 · <strong>Day:</strong> 31 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #31 — In local search the landscape is something you design, not something you find</h2>
+<p>MA08, Intelligent Search, week 2. Week 1 was path search: a frontier, a goal test, a path.</p>
+<p>Week 2 removes the path entirely. There is no goal state to reach, there is a **candidate</p>
+<p>solution<strong> and an </strong>objective**, and the question becomes &quot;can I make this number bigger&quot;.</p>
+<p>The pseudocode is four fields — <code>State</code>, <code>Objective(s)</code>, <code>Neighbors(s)</code>, <code>InitialState()</code> —</p>
+<p>and the lecture is blunt about which two matter: the objective and the neighbourhood are</p>
+<p><strong>modelling choices</strong>, not algorithm settings. Two teams can run the same hill climber on</p>
+<p>the same floor and get different answers because one of them defined &quot;neighbour&quot; differently.</p>
+<p>That sentence sounds like philosophy until you run it. So I built the week-2 scaffold</p>
+<p>properly: a weighted floor plan (8×10, seven wall cells, 73 free cells), four Wi-Fi routers</p>
+<p>placed on free cells, coverage by Manhattan distance ≤ 2. Objective = total weighted demand</p>
+<p>covered, <strong>minus half of the demand that gets covered twice</strong>. That second term is the whole</p>
+<p>design decision. Without it the objective is a plain maximum-coverage problem and my first</p>
+<p>run had hill climbing hit the exact optimum 16 times out of 20 — a flat, easy landscape that</p>
+<p>teaches nothing. Adding the waste penalty makes routers compete for the same cells, and the</p>
+<p>landscape gets ridges.</p>
+<p>Then the reference. I brute-forced <strong>all 1,088,430 placements</strong> of four routers over 73</p>
+<p>free cells with the exact objective, so every gap I report below is measured against the true</p>
+<p>optimum, not against &quot;the best I happened to find&quot;. That is the part people skip, and it is</p>
+<p>the only reason the rest of the numbers mean anything.</p>
+<p><strong>What I tried today:</strong> one file, stdlib only. Bitmask objective (so 1.09M placements run in</p>
+<p>about eight seconds), steepest-ascent hill climbing over the <em>complete</em> one-router</p>
+<p>neighbourhood, random restarts, simulated annealing with a geometric schedule, and a sweep of</p>
+<p>the starting temperature across eight orders of magnitude with ten seeds per row.</p>
+<pre><code>#!/usr/bin/env python3
+&quot;&quot;&quot;MA08 Intelligent Search, week 2. Local search and optimisation.
+
+One idea: the objective and the neighbourhood are modelling choices, and the
+temperature is a number in the units of the objective -- not a magic knob.
+
+Router placement on a weighted floor plan. stdlib only. No network.
+&quot;&quot;&quot;
+import itertools
+import math
+import random
+
+H, W = 8, 10
+RADIUS = 2
+K = 4
+WASTE = 0.5          # a cell covered twice is paid once, not twice
+WALLS = frozenset({(1, 4), (2, 4), (3, 4),
+                   (4, 7), (5, 7),
+                   (6, 2), (6, 3)})
+
+
+def build_floor():
+    weights = {}
+    for r in range(H):
+        for c in range(W):
+            if (r, c) in WALLS:
+                continue
+            w = 1.0
+            if 2 &lt;= r &lt;= 4 and 1 &lt;= c &lt;= 3:
+                w = 2.5
+            if 1 &lt;= r &lt;= 2 and 7 &lt;= c &lt;= 8:
+                w = 2.0
+            if r == 6 and c &gt;= 6:
+                w = 1.8
+            weights[(r, c)] = w
+    return weights
+
+
+WEIGHTS = build_floor()
+FREE = sorted(WEIGHTS)
+INDEX = {p: i for i, p in enumerate(FREE)}
+MASK = {p: sum(1 &lt;&lt; INDEX[q] for q in FREE
+               if abs(p[0] - q[0]) + abs(p[1] - q[1]) &lt;= RADIUS)
+        for p in FREE}
+SELF = {p: WEIGHTS[p] for p in FREE}
+
+_WCACHE = {0: 0.0}
+
+
+def weight_of(mask):
+    &quot;&quot;&quot;Weighted demand covered by a bitmask of cells, memoised.&quot;&quot;&quot;
+    v = _WCACHE.get(mask)
+    if v is None:
+        v = 0.0
+        m = mask
+        while m:
+            b = m &amp; -m
+            v += WEIGHTS[FREE[b.bit_length() - 1]]
+            m ^= b
+        _WCACHE[mask] = v
+    return v
+
+
+def score(routers):
+    &quot;&quot;&quot;Coverage minus the waste of covering the same cell twice.
+
+    sum over cells: w*(covered) - WASTE*w*(layers-1)
+      = sum_r weight(mask_r) - WASTE*(sum_r weight(mask_r) - weight(union))
+    &quot;&quot;&quot;
+    union = 0
+    own = 0.0
+    for rt in routers:
+        union |= MASK[rt]
+        own += weight_of(MASK[rt])
+    return weight_of(union) - WASTE * (own - weight_of(union))
+
+
+def all_moves(routers):
+    occupied = set(routers)
+    out = []
+    for i in range(len(routers)):
+        rest = occupied - {routers[i]}
+        for c in FREE:
+            if c in rest:
+                continue
+            cand = list(routers)
+            cand[i] = c
+            out.append(tuple(cand))
+    return out
+
+
+def random_move(routers, rng):
+    occupied = set(routers)
+    while True:
+        i = rng.randrange(len(routers))
+        rest = occupied - {routers[i]}
+        c = FREE[rng.randrange(len(FREE))]
+        if c not in rest:
+            cand = list(routers)
+            cand[i] = c
+            return tuple(cand)
+
+
+def steepest_ascent(start, cnt):
+    cur = start
+    f = cnt.score(cur)
+    while True:
+        best, best_f = None, f
+        for nb in all_moves(cur):
+            v = cnt.score(nb)
+            if v &gt; best_f:
+                best, best_f = nb, v
+        if best is None:
+            return cur, f
+        cur, f = best, best_f
+
+
+def anneal(start, t0, proposals, rng, cnt, alpha=0.9995):
+    cur = start
+    f = cnt.score(cur)
+    best, best_f = cur, f
+    t = t0
+    worse_offered = worse_taken = 0
+    for _ in range(proposals):
+        nb = random_move(cur, rng)
+        v = cnt.score(nb)
+        d = v - f
+        if d &gt;= 0:
+            cur, f = nb, v
+            if f &gt; best_f:
+                best, best_f = nb, f
+        else:
+            worse_offered += 1
+            if t &gt; 0 and rng.random() &lt; math.exp(d / t):
+                cur, f = nb, v
+                worse_taken += 1
+        t *= alpha
+    return best, best_f, worse_offered, worse_taken
+
+
+class Counter:
+    def __init__(self):
+        self.n = 0
+
+    def score(self, routers):
+        self.n += 1
+        return score(routers)
+
+
+def main():
+    print(&quot;== 0. the instance&quot;)
+    print(f&quot;   floor {H}x{W}, {len(WALLS)} walls, {len(FREE)} free cells, &quot;
+          f&quot;{K} routers, radius {RADIUS} (manhattan)&quot;)
+    print(f&quot;   objective: weighted demand covered, minus {WASTE} x the demand &quot;
+          f&quot;covered twice&quot;)
+    print(f&quot;   total weighted demand: {sum(WEIGHTS.values()):.1f}&quot;)
+
+    opt_f, opt_p, n_combos = -1.0, None, 0
+    for p in itertools.combinations(FREE, K):
+        n_combos += 1
+        v = score(p)
+        if v &gt; opt_f:
+            opt_f, opt_p = v, p
+    print(f&quot;   exact optimum over all {n_combos} placements: {opt_f:.2f} &quot;
+          f&quot;at {[list(x) for x in opt_p]}&quot;)
+    print()
+
+    rng = random.Random(20261106)
+    starts = [tuple(rng.sample(FREE, K)) for _ in range(30)]
+
+    hc_vals, hc_evals = [], []
+    for s in starts:
+        cnt = Counter()
+        _, v = steepest_ascent(s, cnt)
+        hc_vals.append(v)
+        hc_evals.append(cnt.n)
+    at_opt = sum(1 for v in hc_vals if abs(v - opt_f) &lt; 1e-9)
+    gaps = sorted(opt_f - v for v in hc_vals)
+    print(&quot;== 1. steepest-ascent hill climbing, 30 fixed starts&quot;)
+    print(f&quot;   reached the exact optimum : {at_opt}/30&quot;)
+    print(f&quot;   mean value                : {sum(hc_vals)/len(hc_vals):.2f}&quot;)
+    print(f&quot;   worst run                 : {min(hc_vals):.2f}  &quot;
+          f&quot;({opt_f - min(hc_vals):.2f} short of the optimum)&quot;)
+    print(f&quot;   median gap to optimum     : {gaps[len(gaps)//2]:.2f}&quot;)
+    print(f&quot;   evaluations per run       : mean {sum(hc_evals)/len(hc_evals):.0f}, &quot;
+          f&quot;max {max(hc_evals)}&quot;)
+    print()
+
+    rr_best, rr_total, rr_opt = -1.0, 0, 0
+    for s in starts:
+        cnt = Counter()
+        _, v = steepest_ascent(s, cnt)
+        rr_total += cnt.n
+        rr_best = max(rr_best, v)
+    print(&quot;== 2. the same hill climbing, 30 restarts, keep the best&quot;)
+    print(f&quot;   best over 30 restarts     : {rr_best:.2f}  (optimum {opt_f:.2f})&quot;)
+    print(f&quot;   restarts that found it    : {at_opt}/30&quot;)
+    print(f&quot;   total evaluations spent   : {rr_total}&quot;)
+
+    print()
+    print(&quot;== 3. simulated annealing, 4000 random proposals, 10 seeds per row&quot;)
+    print(f&quot;   {&#x27;T0&#x27;:&gt;6}  {&#x27;best&#x27;:&gt;6}  {&#x27;mean&#x27;:&gt;6}  {&#x27;at optimum&#x27;:&gt;10}  &quot;
+          f&quot;{&#x27;worse moves accepted&#x27;:&gt;20}&quot;)
+    seed_rng = random.Random(11)
+    rows = []
+    for t0 in (0.0, 0.05, 0.2, 0.5, 1.0, 2.0, 5.0, 20.0):
+        vals, off, taken = [], 0, 0
+        for _ in range(10):
+            s = tuple(seed_rng.sample(FREE, K))
+            cnt = Counter()
+            _, v, wo, wt = anneal(s, t0, 4000,
+                                  random.Random(seed_rng.randrange(10 ** 9)), cnt)
+            vals.append(v)
+            off += wo
+            taken += wt
+        hits = sum(1 for v in vals if abs(v - opt_f) &lt; 1e-9)
+        rate = (taken / off) if off else 0.0
+        rows.append((t0, max(vals), sum(vals) / len(vals), hits, rate))
+        print(f&quot;   {t0:6.2f}  {max(vals):6.2f}  {sum(vals)/len(vals):6.2f}  &quot;
+              f&quot;{hits:6d}/10    {rate:17.1%}&quot;)
+    best_row = max(rows, key=lambda r: (r[2], r[3]))
+    print(f&quot;   best T0 on mean value     : {best_row[0]:.2f} &quot;
+          f&quot;(mean {best_row[2]:.2f}, {best_row[3]}/10 runs hit the optimum)&quot;)
+
+    print()
+    drng = random.Random(5)
+    deltas = []
+    for _ in range(20000):
+        p = tuple(drng.sample(FREE, K))
+        q = random_move(p, drng)
+        deltas.append(abs(score(q) - score(p)))
+    mean_d = sum(deltas) / len(deltas)
+    print(&quot;== 4. what a temperature is measured in&quot;)
+    print(f&quot;   mean |delta| of a random move : {mean_d:.3f} points&quot;)
+    print(f&quot;   max  |delta| of a random move : {max(deltas):.1f} points&quot;)
+    print(f&quot;   T that accepts a move 1 mean-step worse: {mean_d:.3f} &quot;
+          f&quot;(that is where e^-1 = {math.exp(-1):.3f} lives)&quot;)
+    print(f&quot;   best measured T0 / mean |delta|        : {best_row[0]/mean_d:.2f}&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    main()</code></pre>
+<p>Real output:</p>
+<pre><code>== 0. the instance
+   floor 8x10, 7 walls, 73 free cells, 4 routers, radius 2 (manhattan)
+   objective: weighted demand covered, minus 0.5 x the demand covered twice
+   total weighted demand: 93.7
+   exact optimum over all 1088430 placements: 65.70 at [[1, 7], [2, 1], [4, 4], [6, 7]]
+
+== 1. steepest-ascent hill climbing, 30 fixed starts
+   reached the exact optimum : 2/30
+   mean value                : 63.94
+   worst run                 : 61.40  (4.30 short of the optimum)
+   median gap to optimum     : 1.50
+   evaluations per run       : mean 1214, max 1681
+
+== 2. the same hill climbing, 30 restarts, keep the best
+   best over 30 restarts     : 65.70  (optimum 65.70)
+   restarts that found it    : 2/30
+   total evaluations spent   : 36430
+
+== 3. simulated annealing, 4000 random proposals, 10 seeds per row
+       T0    best    mean  at optimum  worse moves accepted
+     0.00   65.70   64.24       2/10                 0.0%
+     0.05   65.70   64.64       2/10                 0.0%
+     0.20   65.20   64.41       0/10                 0.0%
+     0.50   65.70   64.60       1/10                 0.1%
+     1.00   65.70   64.56       1/10                 0.5%
+     2.00   65.70   64.96       3/10                 1.5%
+     5.00   65.70   65.35       6/10                 8.0%
+    20.00   65.70   64.30       1/10                38.7%
+   best T0 on mean value     : 5.00 (mean 65.35, 6/10 runs hit the optimum)
+
+== 4. what a temperature is measured in
+   mean |delta| of a random move : 6.798 points
+   max  |delta| of a random move : 33.0 points
+   T that accepts a move 1 mean-step worse: 6.798 (that is where e^-1 = 0.368 lives)
+   best measured T0 / mean |delta|        : 0.74</code></pre>
+<p><strong>What I understood from it:</strong> two numbers do all the talking.</p>
+<p><strong>2 out of 30.</strong> Steepest ascent over the <em>complete</em> neighbourhood — the expensive, thorough</p>
+<p>version, mean 1,214 objective evaluations per run — found the exact optimum twice. The worst</p>
+<p>start stopped at <strong>61.40</strong>, which is <strong>4.30 below</strong> a 65.70 optimum, and it stopped there</p>
+<p>because <em>every single one of the 276 neighbours was worse</em>. That is what a local optimum is:</p>
+<p>not a bug, not a bad implementation, a correct answer to the wrong question. The median run</p>
+<p>was only 1.50 short, so most of the damage is small and easy to call &quot;fine&quot;. This is the</p>
+<p>number I will quote in the report of every project that reports &quot;our optimiser converged&quot;.</p>
+<p><strong>Restarts are the dumbest fix that works</strong>, and the measurement says how dumb: 30 restarts,</p>
+<p>36,430 evaluations, best 65.70. It worked. It also means the basin of attraction of the</p>
+<p>optimum caught roughly 7% of random starts, so anything resembling a guarantee would need</p>
+<p>dozens of starts, and 36k evaluations for a four-router floor is not free.</p>
+<p><strong>Then the temperature, which is where I was wrong.</strong> I assumed <code>T</code> was a knob you tune by</p>
+<p>feel, and the sweep shows it is a <em>scale</em>: the mean absolute change of one random move on</p>
+<p>this objective is <strong>6.798 points</strong>, and the useful band sat at <code>T0 = 2…5</code>, i.e. **0.29 to 0.74</p>
+<p>mean |Δ|**. Pick <code>T0 = 0.20</code> (3% of one step) and the run behaves like hill climbing — the</p>
+<p>acceptance of worse moves is 0.0%, mean 64.41. Pick <code>T0 = 20</code> (three mean steps) and 38.7% of</p>
+<p>worse moves get taken, the walk is nearly random, and the mean comes back to <strong>64.30</strong> —</p>
+<p>statistically the same as <code>T0 = 0</code> at 64.24, so all that heat bought nothing at all. At</p>
+<p><code>T0 = 5</code> it accepted 8.0% of worse moves and hit the optimum in 6 of 10 runs, a mean of</p>
+<p><strong>65.35</strong> against hill climbing&#x27;s 63.94 — without any restart, on 4,000 proposals.</p>
+<p>The honest caveats, since I would rather write them than have them found: 4,000 proposals is</p>
+<p>more than the ~1,214 evaluations a hill climb spends, so this is not an equal-budget</p>
+<p>comparison; and ten seeds per row is a small sample, which is why the 0.20 row looks out of</p>
+<p>place (0/10 at the optimum, mean 64.41 — sampling noise, not a mechanism).</p>
+<p>The sentence I keep from today: **the landscape is not a property of the problem, it is a</p>
+<p>property of the objective and the neighbourhood you chose** — the first version of my</p>
+<p>objective had no waste penalty and hill climbing solved it 16 times out of 20. I did not</p>
+<p>change the algorithm between those two runs. I changed one term in the objective and moved</p>
+<p>the difficulty of the problem from &quot;trivial&quot; to &quot;hill climbing is right 7% of the time&quot;.</p>
+<p>---</p>
+<h2>Security #31 — The check was one byte short, and the field behind it paid (CWE-193)</h2>
+<p>Different class today, and the first one in this log that lives below the application</p>
+<p>layer: a length check off by exactly one, in the direction that lets a NUL terminator land</p>
+<p>one byte past its buffer.</p>
+<p>The shape is always the same. A fixed-size name field. A check written against the <em>content</em></p>
+<p>length but not against the <em>terminator</em>:</p>
+<pre><code>if (n &gt; sizeof(name)) return -1;   /* 8 characters pass */</code></pre>
+<p>Eight characters fit exactly, so the check says yes — and then the code writes</p>
+<p><code>name[n] = &#x27;\0&#x27;</code>, which is <code>name[8]</code>, one past a <code>char[8]</code>. The byte is written, nothing</p>
+<p>crashes, no warning at <code>-O0</code>, and the test suite is happy because the string is still</p>
+<p>readable. What actually changes is the neighbour: whatever the compiler placed immediately</p>
+<p>after the array. In C that is not a detail you get to choose at review time.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code>static int store_buggy(void *rec, size_t cap, const char *user)
+{
+    size_t n = strlen(user);
+    char  *dst = (char *)rec;
+
+    if (n &gt; cap)                 /* should be &gt;=  : the terminator needs a slot */
+        return -1;
+    memcpy(dst, user, n);
+    dst[n] = &#x27;\0&#x27;;               /* one past the array when n == cap */
+    return (int)n;
+}</code></pre>
+<p><strong>What I understood about preventing it:</strong></p>
+<pre><code>    if (n &gt;= cap)                /* one slot is reserved for the terminator */
+        return -1;
+    memcpy(dst, user, n);
+    dst[n] = &#x27;\0&#x27;;</code></pre>
+<p>Sandbox check (local only):</p>
+<pre><code>== layout, measured, not assumed
+   sizeof(acct_perms)       9  offsetof(name)  0  offsetof(perms)  8
+   sizeof(acct_id)         16  offsetof(name)  0  offsetof(record_id)  8
+
+== 1. same bug, two neighbours, two different consequences
+   name &quot;admin518&quot; (8 chars) -&gt; store returned 8
+   name bytes: admin518   (no terminator inside the array)
+   perms  0x05 -&gt; 0x00
+
+   same call, neighbour is a uint64 id:
+   record_id 0x000000000000002a -&gt; 0x0000000000000000
+
+== 2. the window is exactly one length
+   9 chars -&gt; store returned -1, perms still 0x05
+
+== 3. the fix is one character
+   8 chars, fixed check -&gt; store returned -1, perms 0x05
+   6 chars, fixed check -&gt; store returned 6, name &quot;matias&quot;, perms 0x05
+
+== 4. the sanitizer, on a bare buffer (addresses redacted)
+ERROR: AddressSanitizer: stack-buffer-overflow on address 0x... at pc 0x... bp 0x... sp 0x...
+WRITE of size 1 at 0x... thread T0
+SUMMARY: AddressSanitizer: stack-buffer-overflow asan.c:14 in store_buggy</code></pre>
+<p><strong>What I understood:</strong> the number that matters is not the size of the overflow, it is **which</p>
+<p>byte it is**. One byte, value <code>0x00</code>, position fixed by the ABI — and the measured layout says</p>
+<p><code>offsetof(perms) = 8</code> and <code>offsetof(record_id) = 8</code>, so in both structs the write lands on the</p>
+<p><strong>first byte of the next field</strong>. In the first struct that is the permission bitmask:</p>
+<p><code>0x05</code> (read + write) became <code>0x00</code>, silently, on an 8-character name. In the second struct the</p>
+<p>same call zeroed the low byte of a 64-bit record id, <code>0x2a → 0x00</code>, which is a different bug</p>
+<p>entirely — a lookup collision — from the same source line. Same code, same input, blast radius</p>
+<p>decided by struct layout. That is why &quot;it&#x27;s only one byte&quot; is not an argument: the attacker does</p>
+<p>not choose the byte; the compiler does, and the compiler is not on your side.</p>
+<p>The second measured fact is that the window is <strong>exactly one length</strong>: nine characters were</p>
+<p>correctly rejected, eight were accepted, and the fixed check (<code>&gt;=</code>, literally one character)</p>
+<p>rejects eight. There is no exploitability spectrum here; it is a boundary that is either on the</p>
+<p>right side or off by one, and everything else is consequences.</p>
+<p>The third thing, and the reason I ran the sanitizer: against a bare <code>char buf[8]</code> the byte past</p>
+<p>the end belongs to nobody, and only then does anything complain —</p>
+<p><code>stack-buffer-overflow, WRITE of size 1</code>. Inside a struct, the identical write is *architecturally</p>
+<p>legal*, so ASAN stays quiet and <code>-Warray-bounds</code> only fires when the compiler can see the constant</p>
+<p>at <code>-O2</code>. Which means: <strong>a clean sanitizer run is evidence about objects, not about fields.</strong> For</p>
+<p>this class the only reliable defence is the invariant at the boundary — &quot;capacity counts bytes</p>
+<p>including the terminator&quot; — plus a struct design that does not put a security-relevant byte</p>
+<p>next to a character array, because the day it is one byte off, it will be that byte.</p>
+<p>---</p>
+<h2>Day 31 notes</h2>
+<ul><li>Concept #31: MA08 week 2, local search. 8×10 floor, 73 free cells, 4 routers, waste penalty</li></ul>
+<p>  0.5. Exact optimum by brute force over <strong>1,088,430</strong> placements: 65.70. Steepest ascent on</p>
+<p>  30 starts: <strong>2/30</strong> at the optimum, mean 63.94, worst 61.40 (−4.30), ~1,214 evaluations per</p>
+<p>  run. 30 restarts: optimum found. Simulated annealing best at <code>T0 = 5</code> → mean <strong>65.35</strong>,</p>
+<p>  6/10 at the optimum, 8.0% of worse moves accepted; <code>T0 = 20</code> → 38.7% accepted, mean 64.30;</p>
+<p>  <code>T0 = 0.20</code> → 0.0% accepted, behaves like hill climbing. Mean |Δ| of a move = <strong>6.798</strong>,</p>
+<p>  so the useful band was 0.29–0.74 × mean |Δ|. ✔</p>
+<ul><li>Security #31: off-by-one NUL write (CWE-193). <code>if (n &gt; cap)</code> accepts exactly <code>cap</code></li></ul>
+<p>  characters, then <code>dst[n] = &#x27;\0&#x27;</code> writes one past. Measured <code>offsetof</code> = 8 in both structs:</p>
+<p>  perms <code>0x05 → 0x00</code>, record id <code>0x2a → 0x00</code>. Nine characters rejected, eight accepted, fix</p>
+<p>  is <code>&gt;=</code>. ASAN only named it on a bare buffer. Sandbox <code>/tmp</code>, no network, no targets. ✔</p>
+<ul><li>1569 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 031 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>
