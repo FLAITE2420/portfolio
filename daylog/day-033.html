@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 033 — The model is the search: 105x apart, and a heuristic that bought nothing · Matías Rathgeb</title>
+<meta name="description" content="Day 033 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 033 OF 1600 · 2026-11-09</p>
+    <h1>Day 033 — The model is the search: 105x apart, and a heuristic that bought nothing</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-11-09 · <strong>Day:</strong> 33 of 1600  </p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #33 — Model first: the assignment space is a decision</h2>
+<p>MA08, Intelligent Search, week 4. Weeks 1 to 3 all searched for a sequence: a path, a</p>
+<p>better configuration, a policy. Week 4 stops looking for a sequence at all. A constraint</p>
+<p>satisfaction problem is a triple (X, D, C) — variables, their domains, the combinations that are</p>
+<p>allowed — and the answer is a <em>complete, consistent assignment</em>. Assignment is commutative: writing</p>
+<p><code>AI = T1</code> then <code>ML = T2</code> lands in exactly the same place as the other order. So there is no path to</p>
+<p>return, and that is what makes plain depth-first backtracking correct here without revisiting</p>
+<p>states: every solution appears once, at depth n.</p>
+<p>The standard formulation is three lines. Initial state: the empty assignment. Successor: assign a</p>
+<p>value to one unassigned variable if the result stays consistent. Goal test: the assignment is</p>
+<p>complete. Everything else is a lever, and there are three of them:</p>
+<ul><li><strong>order</strong> — which variable next, which value first;</li><li><strong>inference</strong> — maintain the domains, prune before trying;</li><li><strong>formulation</strong> — what the variables are, before any search starts.</li></ul>
+<p>The week&#x27;s claim is that the third one dominates. I measured all three on two problems I could</p>
+<p>solve by hand, with one generic solver so the comparison is not an artefact of two different</p>
+<p>programs. <code>value attempts</code> counts values actually tried; <code>pruned</code> counts partial assignments</p>
+<p>abandoned the moment a domain went empty.</p>
+<p><strong>What I tried today:</strong> one file, stdlib only, no network. 8–11 queens with three strategies, a</p>
+<p>5-session campus timetable with a unary and four binary constraints, and one allocation problem</p>
+<p>written twice — 24 boolean variables versus 6 variables with a school domain.</p>
+<pre><code>&quot;&quot;&quot;Day 33 concept: a CSP is an assignment problem, and the model decides the search.
+One file, stdlib only. Output must be byte-identical on every run.&quot;&quot;&quot;
+
+
+def solve(variables, domains, ok, select=None, forward_check=False, limit=None):
+    &quot;&quot;&quot;Generic backtracking over partial assignments.
+    nodes = value attempts; wipes = partial assignments abandoned by propagation.&quot;&quot;&quot;
+    stats = {&quot;nodes&quot;: 0, &quot;wipes&quot;: 0}
+    dom = {v: set(domains[v]) for v in variables}
+    order = list(variables)
+
+    def pick(assign, d):
+        if select == &quot;mrv&quot;:
+            best = None
+            for v in order:
+                if v in assign:
+                    continue
+                if best is None or len(d[v]) &lt; len(d[best]):
+                    best = v
+            return best
+        for v in order:
+            if v not in assign:
+                return v
+        return None
+
+    def rec(assign, d):
+        if len(assign) == len(order):
+            return [dict(assign)]
+        v = pick(assign, d)
+        out = []
+        for val in sorted(d[v]):
+            stats[&quot;nodes&quot;] += 1
+            if not ok(assign, v, val):
+                continue
+            nd = d
+            if forward_check:
+                nd = {u: set(x) for u, x in d.items()}
+                nd[v] = {val}
+                dead = False
+                for u in order:
+                    if u == v or u in assign:
+                        continue
+                    nd[u] = {x for x in nd[u] if ok({**assign, v: val}, u, x)}
+                    if not nd[u]:
+                        dead = True
+                        break
+                if dead:
+                    stats[&quot;wipes&quot;] += 1
+                    continue
+            assign[v] = val
+            out += rec(assign, nd)
+            del assign[v]
+            if limit and len(out) &gt;= limit:
+                break
+        return out
+
+    sols = rec({}, dom)
+    return sols, stats
+
+
+# ---------- 1. n-queens: one CSP, three ways to search it ----------
+def queens(n, select=None, fc=False):
+    variables = [f&quot;q{c}&quot; for c in range(n)]
+    domains = {v: set(range(n)) for v in variables}
+    col = {v: c for c, v in enumerate(variables)}
+
+    def ok(assign, v, row):
+        c = col[v]
+        for u, r in assign.items():
+            if u == v:
+                continue
+            if r == row or abs(r - row) == abs(col[u] - c):
+                return False
+        return True
+
+    sols, st = solve(variables, domains, ok, select=select, forward_check=fc)
+    return len(sols), st
+
+
+# ---------- 2. Smart-campus timetable ----------
+SESSIONS = [&quot;AI&quot;, &quot;DS&quot;, &quot;ML&quot;, &quot;SE&quot;, &quot;MATH&quot;]
+SLOTS = [&quot;T1&quot;, &quot;T2&quot;, &quot;T3&quot;]
+ROOMS = [&quot;R1&quot;, &quot;R2&quot;]
+VALUES = [(t, r) for t in SLOTS for r in ROOMS]
+CANNOT_OVERLAP = [(&quot;AI&quot;, &quot;ML&quot;), (&quot;DS&quot;, &quot;ML&quot;), (&quot;AI&quot;, &quot;DS&quot;)]
+
+
+def timetable(select=None, fc=False):
+    domains = {s: set(VALUES) for s in SESSIONS}
+    domains[&quot;SE&quot;] = {v for v in VALUES if v[1] == &quot;R2&quot;}  # unary: SE in R2
+
+    def ok(assign, v, val):
+        for u, other in assign.items():
+            if u == v:
+                continue
+            if other == val:                      # one session per (slot, room)
+                return False
+            pair = tuple(sorted((u, v)))
+            if pair in CANNOT_OVERLAP and other[0] == val[0]:
+                return False
+        return True
+
+    sols, st = solve(SESSIONS, domains, ok, select=select, forward_check=fc)
+    return sols, st
+
+
+# ---------- 3. two formulations of one allocation problem ----------
+CHILDREN = [&quot;kid1&quot;, &quot;kid2&quot;, &quot;kid3&quot;, &quot;kid4&quot;, &quot;kid5&quot;, &quot;kid6&quot;]
+SCHOOLS = [&quot;S1&quot;, &quot;S2&quot;, &quot;S3&quot;, &quot;S4&quot;]
+CAPACITY = {&quot;S1&quot;: 2, &quot;S2&quot;: 2, &quot;S3&quot;: 1, &quot;S4&quot;: 1}
+WALK_OK = {&quot;kid1&quot;: {&quot;S1&quot;, &quot;S2&quot;}, &quot;kid2&quot;: {&quot;S1&quot;, &quot;S3&quot;}, &quot;kid3&quot;: {&quot;S2&quot;, &quot;S3&quot;},
+           &quot;kid4&quot;: {&quot;S2&quot;, &quot;S4&quot;}, &quot;kid5&quot;: {&quot;S3&quot;, &quot;S4&quot;}, &quot;kid6&quot;: {&quot;S1&quot;, &quot;S4&quot;}}
+
+
+def model_one_var_per_child():
+    variables = list(CHILDREN)
+    domains = {c: set(WALK_OK[c]) for c in CHILDREN}
+
+    def ok(assign, v, s):
+        used = sum(1 for u, x in assign.items() if u != v and x == s) + 1
+        return used &lt;= CAPACITY[s]
+
+    return solve(variables, domains, ok, select=&quot;mrv&quot;, forward_check=True)
+
+
+def model_boolean_naive(limit=1):
+    &quot;&quot;&quot;24 boolean variables, no completeness rule. Only &#x27;at most one school&#x27;.&quot;&quot;&quot;
+    variables = [f&quot;{c}|{s}&quot; for c in CHILDREN for s in SCHOOLS]
+    domains = {v: {0, 1} for v in variables}
+
+    def ok(assign, v, val):
+        c, s = v.split(&quot;|&quot;)
+        if val == 1 and s not in WALK_OK[c]:
+            return False
+        for u, x in assign.items():
+            if u == v or x != 1:
+                continue
+            if u.split(&quot;|&quot;)[0] == c:
+                return False      # two schools for one child
+            if u.split(&quot;|&quot;)[1] == s:
+                used = sum(1 for w, y in assign.items() if y == 1 and w.split(&quot;|&quot;)[1] == s) + 1
+                if used &gt; CAPACITY[s]:
+                    return False
+        return True
+
+    return solve(variables, domains, ok, select=None, forward_check=False, limit=limit)
+
+
+def model_boolean_propagated():
+    &quot;&quot;&quot;Same 24 variables, but assigning 1 forces the siblings to 0 immediately.&quot;&quot;&quot;
+    pairs = [(c, s) for c in CHILDREN for s in SCHOOLS]
+    stats = {&quot;nodes&quot;: 0}
+    out = []
+
+    def rec(assign):
+        if len(assign) == len(pairs):
+            per_child = {c: 0 for c in CHILDREN}
+            per_school = {s: 0 for s in SCHOOLS}
+            for (c, s), val in assign.items():
+                if val:
+                    per_child[c] += 1
+                    per_school[s] += 1
+            if all(per_child[c] == 1 for c in CHILDREN) and \
+               all(per_school[s] &lt;= CAPACITY[s] for s in SCHOOLS):
+                out.append(dict(assign))
+            return
+        c, s = pairs[len(assign)]
+        for val in (1, 0):
+            stats[&quot;nodes&quot;] += 1
+            if val == 1:
+                if s not in WALK_OK[c]:
+                    continue
+                used = sum(1 for (cc, ss), vv in assign.items() if vv == 1 and ss == s)
+                if used + 1 &gt; CAPACITY[s]:
+                    continue
+                if any(vv == 1 and cc == c for (cc, ss), vv in assign.items()):
+                    continue
+                forced = {p: 0 for p in pairs[len(assign) + 1:] if p[0] == c}
+                for p in forced:
+                    stats[&quot;nodes&quot;] += 1
+                assign.update(forced)
+                assign[(c, s)] = 1
+                rec(assign)
+                for p in forced:
+                    del assign[p]
+                del assign[(c, s)]
+            else:
+                assign[(c, s)] = 0
+                rec(assign)
+                del assign[(c, s)]
+
+    rec({})
+    return out, stats
+
+
+def main():
+    print(&quot;== 1. n-queens: one CSP, three ways to search it ==&quot;)
+    print(f&quot;{&#x27;n&#x27;:&gt;2}  {&#x27;strategy&#x27;:&lt;24} {&#x27;solutions&#x27;:&gt;9} {&#x27;value attempts&#x27;:&gt;14} {&#x27;pruned&#x27;:&gt;7}&quot;)
+    for n in (8, 9, 10, 11):
+        for label, sel, fc in ((&quot;static order&quot;, None, False),
+                               (&quot;MRV&quot;, &quot;mrv&quot;, False),
+                               (&quot;MRV + forward checking&quot;, &quot;mrv&quot;, True)):
+            sols, st = queens(n, select=sel, fc=fc)
+            print(f&quot;{n:&gt;2}  {label:&lt;24} {sols:&gt;9} {st[&#x27;nodes&#x27;]:&gt;14} {st[&#x27;wipes&#x27;]:&gt;7}&quot;)
+
+    print()
+    print(&quot;== 2. timetable: 5 sessions, unary + binary constraints ==&quot;)
+    print(f&quot;{&#x27;model&#x27;:&lt;24} {&#x27;solutions&#x27;:&gt;9} {&#x27;value attempts&#x27;:&gt;14} {&#x27;pruned&#x27;:&gt;7}&quot;)
+    for label, sel, fc in ((&quot;static order&quot;, None, False),
+                           (&quot;MRV&quot;, &quot;mrv&quot;, False),
+                           (&quot;MRV + forward checking&quot;, &quot;mrv&quot;, True)):
+        sols, st = timetable(select=sel, fc=fc)
+        print(f&quot;{label:&lt;24} {len(sols):&gt;9} {st[&#x27;nodes&#x27;]:&gt;14} {st[&#x27;wipes&#x27;]:&gt;7}&quot;)
+
+    print()
+    print(&quot;== 3. same allocation problem, two formulations ==&quot;)
+    raw_bool = 2 ** (len(CHILDREN) * len(SCHOOLS))
+    raw_kid = 1
+    for c in CHILDREN:
+        raw_kid *= len(WALK_OK[c])
+    print(f&quot;boolean: {len(CHILDREN) * len(SCHOOLS)} vars, raw space 2^{len(CHILDREN) * len(SCHOOLS)} = {raw_bool}&quot;)
+    print(f&quot;per-child: {len(CHILDREN)} vars, raw space &quot;
+          + &quot; * &quot;.join(str(len(WALK_OK[c])) for c in CHILDREN) + f&quot; = {raw_kid}&quot;)
+
+    naive, _ = model_boolean_naive(limit=1)
+    first = naive[0]
+    assigned = sum(1 for key, v in first.items() if v == 1 and &quot;|&quot; in key)
+    print(f&quot;naive boolean, first accepted assignment: {assigned} of {len(CHILDREN)} children have a school&quot;)
+    print(f&quot;  -&gt; it calls &#x27;nobody goes to school&#x27; a solution: {assigned == 0}&quot;)
+
+    bp, stp = model_boolean_propagated()
+    op, sto = model_one_var_per_child()
+    print(f&quot;propagated boolean -&gt; {len(bp):&gt;4} solutions, {stp[&#x27;nodes&#x27;]:&gt;6} value attempts&quot;)
+    print(f&quot;one-per-child      -&gt; {len(op):&gt;4} solutions, {sto[&#x27;nodes&#x27;]:&gt;6} value attempts&quot;)
+    set_bool = sorted(tuple(sorted((c, s) for (c, s), v in sol.items() if v == 1)) for sol in bp)
+    set_kid = sorted(tuple(sorted(sol.items())) for sol in op)
+    print(f&quot;identical solution set: {set_bool == set_kid}&quot;)
+
+    print()
+    print(&quot;== 4. where the saving actually came from ==&quot;)
+    _, q_static = queens(11, select=None, fc=False)
+    _, q_fc = queens(11, select=&quot;mrv&quot;, fc=True)
+    print(f&quot;11-queens static order      : {q_static[&#x27;nodes&#x27;]:&gt;8} attempts&quot;)
+    print(f&quot;11-queens MRV + forward chk : {q_fc[&#x27;nodes&#x27;]:&gt;8} attempts&quot;)
+    print(f&quot;  forward checking alone      {q_static[&#x27;nodes&#x27;] / q_fc[&#x27;nodes&#x27;]:.2f}x fewer attempts&quot;)
+    _, t_static = timetable(select=None, fc=False)
+    _, t_mrv = timetable(select=&quot;mrv&quot;, fc=False)
+    print(f&quot;timetable MRV, domains never maintained: {t_mrv[&#x27;nodes&#x27;]} vs {t_static[&#x27;nodes&#x27;]} attempts&quot;)
+    print(f&quot;  MRV made it worse: {t_mrv[&#x27;nodes&#x27;] &gt; t_static[&#x27;nodes&#x27;]}&quot;)
+    print(f&quot;formulation change (boolean -&gt; per-child): &quot;
+          f&quot;{stp[&#x27;nodes&#x27;] / sto[&#x27;nodes&#x27;]:.2f}x more attempts to say the same thing&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    main()</code></pre>
+<p>Real output:</p>
+<pre><code>== 1. n-queens: one CSP, three ways to search it ==
+ n  strategy                 solutions value attempts  pruned
+ 8  static order                    92          15720       0
+ 8  MRV                             92          15720       0
+ 8  MRV + forward checking          92           1360     292
+ 9  static order                   352          72378       0
+ 9  MRV                            352          72378       0
+ 9  MRV + forward checking         352           5399    1126
+10  static order                   724         348150       0
+10  MRV                            724         348150       0
+10  MRV + forward checking         724          19744    4992
+11  static order                  2680        1806706       0
+11  MRV                           2680        1806706       0
+11  MRV + forward checking        2680          85939   21796
+
+== 2. timetable: 5 sessions, unary + binary constraints ==
+model                    solutions value attempts  pruned
+static order                   144            762       0
+MRV                            144            831       0
+MRV + forward checking         144            282       0
+
+== 3. same allocation problem, two formulations ==
+boolean: 24 vars, raw space 2^24 = 16777216
+per-child: 6 vars, raw space 2 * 2 * 2 * 2 * 2 * 2 = 64
+naive boolean, first accepted assignment: 0 of 6 children have a school
+  -&gt; it calls &#x27;nobody goes to school&#x27; a solution: True
+propagated boolean -&gt;    4 solutions,   2530 value attempts
+one-per-child      -&gt;    4 solutions,     24 value attempts
+identical solution set: True
+
+== 4. where the saving actually came from ==
+11-queens static order      :  1806706 attempts
+11-queens MRV + forward chk :    85939 attempts
+  forward checking alone      21.02x fewer attempts
+timetable MRV, domains never maintained: 831 vs 762 attempts
+  MRV made it worse: True
+formulation change (boolean -&gt; per-child): 105.42x more attempts to say the same thing</code></pre>
+<p><strong>What I understood from it:</strong> Three things I did not expect.</p>
+<p>First, <strong>MRV alone changed nothing at all</strong>. 8 queens with static order: 15,720 attempts. 8 queens</p>
+<p>with MRV: 15,720. Same for n=9, 10, 11 — the numbers are identical to the digit, because if you</p>
+<p>never shrink the domains then every unassigned variable has the same size and &quot;minimum remaining</p>
+<p>values&quot; has no minimum to find; it silently degrades to declaration order. A heuristic that reads</p>
+<p>domain sizes is only a heuristic if something maintains the domains. Forward checking is what</p>
+<p>maintains them: 85,939 attempts at n=11 against 1,806,706, 21.02x, with 21,796 branches killed the</p>
+<p>moment a domain emptied.</p>
+<p>Second, <strong>MRV made the timetable worse</strong> — 831 attempts against 762 — and the reason is honest:</p>
+<p>the only narrow domain was the one the unary constraint created at formulation time, `SE must be in</p>
+<p>R2<code>, three values. MRV grabbed exactly that variable, and </code>SE` touches none of the three binary</p>
+<p>constraints, so taking it first pruned nothing and pushed every real conflict one level deeper.</p>
+<p>MRV minimises domain size, not constraint impact. With forward checking the same model drops to</p>
+<p>282 attempts, 2.7x better than static order, because then the ordering and the propagation finally</p>
+<p>work on the same information.</p>
+<p>Third, and this is the one that cost me a rewrite: my first timetable allowed two sessions in the</p>
+<p>same room at the same time. I had written the three &quot;cannot overlap&quot; pairs and forgotten that a</p>
+<p>real timetable needs one session per (slot, room). The solver happily returned <strong>864</strong> consistent</p>
+<p>assignments. Adding that single constraint dropped it to <strong>144</strong> and moved every number in the</p>
+<p>table below. Nothing about the search changed; the model did.</p>
+<p>The formulation section is the sharpest version of the same lesson. The boolean encoding — one</p>
+<p>variable per child–school pair, 24 variables — is the one the slides warn about. With only &quot;at most</p>
+<p>one school per child&quot; written down, its first accepted assignment put **zero of six children in a</p>
+<p>school** and called it a solution: absence of a value was never forbidden. Add the missing half of</p>
+<p>the constraint, force the siblings to zero as soon as one pair is true, and it finds the same 4</p>
+<p>solutions as the 6-variable model — for 2,530 value attempts instead of 24. 105.42x to say the same</p>
+<p>thing, and the difference is entirely in how the variables were cut.</p>
+<p>---</p>
+<h2>Security #33 — Web cache deception: the cache and the app disagree about what a path is (CWE-525)</h2>
+<p>A web cache decides whether to keep a response by looking at the URL. The application</p>
+<p>decides what to return by looking at the path <em>and</em> at who is asking. When those two disagree about</p>
+<p>what a path means, one user&#x27;s page becomes another user&#x27;s cache entry. That is cache deception</p>
+<p>(CWE-525), and it needs no bug in either component: each one is behaving as designed.</p>
+<p>The app half: many frameworks treat a trailing known extension as decoration and route</p>
+<p><code>/account/profile/avatar.css</code> to the account page — a real behaviour, in Rails, Spring, Django with</p>
+<p><code>APPEND_SLASH</code>, and in nginx configs that fall back to <code>index.php</code>. The cache half: an extension in</p>
+<p><code>.css/.js/.png/.jpg</code> means &quot;static asset&quot;, static means shared, and the response gets stored without</p>
+<p>looking at the <code>Cookie</code> header that produced it.</p>
+<p>The attack is one request from the victim, and HTML gives that away for free: an</p>
+<p><code>&lt;img src=&quot;/account/profile/avatar.css&quot;&gt;</code> in a comment, a chat message, a forum post. The browser</p>
+<p>attaches the session cookie, the app answers 200 with the account page, the cache stores it under a</p>
+<p>key that contains no identity, and the attacker reads it with a plain GET. The attacker never needs</p>
+<p>to guess anything, which is the part people get wrong: unauthenticated <code>/account/profile</code> is a 302</p>
+<p>with zero bytes. The only request that returns the body is the one served from the cache.</p>
+<p><strong>Two halves of one disagreement:</strong> the origin strips a trailing static</p>
+<p>extension before routing; the cache treats any static-looking path as shared and stores whatever</p>
+<p>came back. Those are the two lines I built, and the bug lives in the space between them.</p>
+<p><strong>The pattern I studied:</strong></p>
+<pre><code>        for ext in STATIC_EXT:          # the framework ignores a trailing fake extension
+            if routed.endswith(ext):
+                routed = routed[: -len(ext)]
+                break
+        static = self.path.split(&quot;?&quot;)[0].endswith(STATIC_EXT)</code></pre>
+<p>Sandbox check (local only, two servers on 127.0.0.1, data invented):</p>
+<pre><code>&quot;&quot;&quot;Day 33 security: web cache deception (CWE-525), reproduced end to end on loopback.
+
+Three real processes&#x27; worth of truth: an origin app, a shared cache in front of it,
+and two clients (victim with a session cookie, attacker without one). No external
+network, no real host, PII is invented. Output is deterministic.
+&quot;&quot;&quot;
+
+import http.client
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+ORIGIN_PORT = 18099
+CACHE_PORT = 18098
+SESSION = &quot;sid=victim-session-8f21&quot;
+PII_MARK = &quot;victima@example.cl&quot;
+STATIC_EXT = (&quot;.css&quot;, &quot;.js&quot;, &quot;.png&quot;, &quot;.jpg&quot;)
+
+PROFILE_HTML = (
+    &quot;&lt;html&gt;&lt;body&gt;&lt;h1&gt;Account&lt;/h1&gt;&quot;
+    &quot;&lt;p&gt;email: &quot; + PII_MARK + &quot;&lt;/p&gt;&quot;
+    &quot;&lt;p&gt;plan: student / balance: 41.20 EUR&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;&quot;
+).encode()
+
+CSS_V1 = b&quot;body{background:#fff;font:14px Arial}&quot; + b&quot;\x00&quot; * 200
+CSS_V2 = b&quot;body{background:#fff;font:16px Georgia}&quot; + b&quot;\x00&quot; * 200
+
+
+# ---------------------------------------------------------------- origin app
+class Origin(BaseHTTPRequestHandler):
+    protocol_version = &quot;HTTP/1.1&quot;
+
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        path = self.path.split(&quot;?&quot;)[0]
+        routed = path
+        for ext in STATIC_EXT:          # the framework ignores a trailing fake extension
+            if routed.endswith(ext):
+                routed = routed[: -len(ext)]
+                break
+        cookie = self.headers.get(&quot;Cookie&quot;, &quot;&quot;)
+
+        if routed.startswith(&quot;/account/profile&quot;):
+            if SESSION in cookie:
+                self._send(200, PROFILE_HTML, &quot;text/html&quot;)
+            else:
+                self._send(302, b&quot;&quot;, &quot;text/html&quot;, extra={&quot;Location&quot;: &quot;/login&quot;})
+        elif routed.startswith(&quot;/static/&quot;):
+            v2 = &quot;v=2&quot; in self.path
+            self._send(200, CSS_V2 if v2 else CSS_V1, &quot;text/css&quot;,
+                       extra={&quot;Cache-Control&quot;: &quot;public, max-age=60&quot;})
+        else:
+            self._send(404, b&quot;not found&quot;, &quot;text/plain&quot;)
+
+    def _send(self, code, body, ctype, extra=None):
+        self.send_response(code)
+        self.send_header(&quot;Content-Type&quot;, ctype)
+        self.send_header(&quot;Content-Length&quot;, str(len(body)))
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_HEAD(self):
+        self.do_GET()
+
+
+# ---------------------------------------------------------------- shared cache
+class CacheProxy(BaseHTTPRequestHandler):
+    protocol_version = &quot;HTTP/1.1&quot;
+    store = {}
+    mode = &quot;vulnerable&quot;
+    hits = 0
+    misses = 0
+
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        cls = CacheProxy
+        key = self.path.split(&quot;?&quot;)[0] if cls.mode == &quot;vulnerable&quot; else self.path
+        static = self.path.split(&quot;?&quot;)[0].endswith(STATIC_EXT)
+        cookie = self.headers.get(&quot;Cookie&quot;, &quot;&quot;)
+
+        if static and cls.mode == &quot;vulnerable&quot; and key in cls.store:
+            status, ctype, body = cls.store[key]
+            cls.hits += 1
+            return self._reply(status, body, ctype, &quot;HIT&quot;)
+
+        if static and cls.mode == &quot;fixed&quot; and key in cls.store:
+            status, ctype, body = cls.store[key]
+            cls.hits += 1
+            return self._reply(status, body, ctype, &quot;HIT&quot;)
+
+        conn = http.client.HTTPConnection(&quot;127.0.0.1&quot;, ORIGIN_PORT, timeout=5)
+        conn.request(&quot;GET&quot;, self.path, headers={&quot;Cookie&quot;: cookie} if cookie else {})
+        resp = conn.getresponse()
+        body = resp.read()
+        ctype = resp.getheader(&quot;Content-Type&quot;, &quot;&quot;)
+        status = resp.status
+        set_cookie = resp.getheader(&quot;Set-Cookie&quot;)
+        cc = (resp.getheader(&quot;Cache-Control&quot;) or &quot;&quot;).lower()
+        conn.close()
+
+        store_it = static and status == 200
+        if cls.mode == &quot;fixed&quot;:
+            # a shared cache may only store when the response is explicitly public,
+            # the request carried no credentials, and nothing sets a cookie
+            store_it = store_it and &quot;public&quot; in cc and not cookie and not set_cookie
+
+        if store_it:
+            cls.store[key] = (status, ctype, body)
+            cls.misses += 1
+        return self._reply(status, body, ctype, &quot;MISS&quot;)
+
+    def _reply(self, status, body, ctype, label):
+        self.send_response(status)
+        self.send_header(&quot;Content-Type&quot;, ctype)
+        self.send_header(&quot;Content-Length&quot;, str(len(body)))
+        self.send_header(&quot;X-Cache&quot;, label)
+        if status == 302:
+            self.send_header(&quot;Location&quot;, &quot;/login&quot;)
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def serve(handler, port):
+    srv = ThreadingHTTPServer((&quot;127.0.0.1&quot;, port), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def get(path, cookie=None):
+    conn = http.client.HTTPConnection(&quot;127.0.0.1&quot;, CACHE_PORT, timeout=5)
+    h = {&quot;Cookie&quot;: cookie} if cookie else {}
+    conn.request(&quot;GET&quot;, path, headers=h)
+    r = conn.getresponse()
+    body = r.read()
+    conn.close()
+    return r.status, r.getheader(&quot;X-Cache&quot;, &quot;-&quot;), body
+
+
+def run(mode):
+    CacheProxy.mode = mode
+    CacheProxy.store = {}
+    CacheProxy.hits = 0
+    CacheProxy.misses = 0
+    print(f&quot;--- cache mode: {mode} ---&quot;)
+    s, tag, b = get(&quot;/account/profile&quot;)
+    print(f&quot;attacker  GET /account/profile              -&gt; {s} {len(b):&gt;4}B cache={tag}&quot;)
+    s, tag, b = get(&quot;/account/profile/avatar.css&quot;, SESSION)
+    print(f&quot;victim    GET /account/profile/avatar.css   -&gt; {s} {len(b):&gt;4}B cache={tag} (cookie sent)&quot;)
+    s, tag, b = get(&quot;/account/profile/avatar.css&quot;)
+    leak = PII_MARK.encode() in b
+    print(f&quot;attacker  GET /account/profile/avatar.css   -&gt; {s} {len(b):&gt;4}B cache={tag} &quot;
+          f&quot;contains victim email: {leak}&quot;)
+    s1, t1, b1 = get(&quot;/static/app.css&quot;)
+    s2, t2, b2 = get(&quot;/static/app.css&quot;)
+    s3, t3, b3 = get(&quot;/static/app.css?v=2&quot;)
+    print(f&quot;attacker  GET /static/app.css               -&gt; {s1} {len(b1):&gt;4}B cache={t1}&quot;)
+    print(f&quot;attacker  GET /static/app.css (again)       -&gt; {s2} {len(b2):&gt;4}B cache={t2}&quot;)
+    print(f&quot;attacker  GET /static/app.css?v=2           -&gt; {s3} {len(b3):&gt;4}B cache={t3} &quot;
+          f&quot;served v1 bytes: {b3 == b1}&quot;)
+    return leak, CacheProxy.hits, CacheProxy.misses
+
+
+def main():
+    serve(Origin, ORIGIN_PORT)
+    serve(CacheProxy, CACHE_PORT)
+    print(&quot;origin :18099  cache :18098  (loopback only)&quot;)
+    print(f&quot;static bytes v1={len(CSS_V1)} v2={len(CSS_V2)}  profile bytes={len(PROFILE_HTML)}&quot;)
+    print()
+    leak_vuln, hits_v, misses_v = run(&quot;vulnerable&quot;)
+    print()
+    leak_fix, hits_f, misses_f = run(&quot;fixed&quot;)
+    print()
+    print(f&quot;deception holds: {leak_vuln}   after fix: {leak_fix}&quot;)
+    print(f&quot;cache still useful after fix: static hits {hits_f} &gt; 0 -&gt; {hits_f &gt; 0}&quot;)
+    print(f&quot;distinct stored objects: vulnerable {misses_v}, fixed {misses_f}&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    main()</code></pre>
+<p>Real output:</p>
+<pre><code>origin :18099  cache :18098  (loopback only)
+static bytes v1=237 v2=239  profile bytes=115
+
+--- cache mode: vulnerable ---
+attacker  GET /account/profile              -&gt; 302    0B cache=MISS
+victim    GET /account/profile/avatar.css   -&gt; 200  115B cache=MISS (cookie sent)
+attacker  GET /account/profile/avatar.css   -&gt; 200  115B cache=HIT contains victim email: True
+attacker  GET /static/app.css               -&gt; 200  237B cache=MISS
+attacker  GET /static/app.css (again)       -&gt; 200  237B cache=HIT
+attacker  GET /static/app.css?v=2           -&gt; 200  237B cache=HIT served v1 bytes: True
+
+--- cache mode: fixed ---
+attacker  GET /account/profile              -&gt; 302    0B cache=MISS
+victim    GET /account/profile/avatar.css   -&gt; 200  115B cache=MISS (cookie sent)
+attacker  GET /account/profile/avatar.css   -&gt; 302    0B cache=MISS contains victim email: False
+attacker  GET /static/app.css               -&gt; 200  237B cache=MISS
+attacker  GET /static/app.css (again)       -&gt; 200  237B cache=HIT
+attacker  GET /static/app.css?v=2           -&gt; 200  239B cache=MISS served v1 bytes: False
+
+deception holds: True   after fix: False
+cache still useful after fix: static hits 1 &gt; 0 -&gt; True
+distinct stored objects: vulnerable 2, fixed 2</code></pre>
+<p><strong>What I understood about preventing it:</strong></p>
+<pre><code>        store_it = static and status == 200
+        if cls.mode == &quot;fixed&quot;:
+            store_it = store_it and &quot;public&quot; in cc and not cookie and not set_cookie</code></pre>
+<p><strong>What I understood:</strong> The fix is not &quot;cache less&quot;. It is making the cache store</p>
+<p>only what the origin explicitly declares public, and only for requests that carried no credentials.</p>
+<p>Two rules, both from the response and the request, not from the URL string:</p>
+<ul><li>do not store if the request had a <code>Cookie</code> (or <code>Authorization</code>) header — a shared cache cannot</li></ul>
+<p>  represent &quot;for this user only&quot;;</p>
+<ul><li>do not store if the response sets a cookie, and require an explicit <code>Cache-Control: public</code> (or</li></ul>
+<p>  <code>s-maxage</code>) instead of inferring cacheability from the extension;</p>
+<ul><li>key on the full request URI, including the query string, because &quot;the query does not matter&quot; is a</li></ul>
+<p>  guess that shows up as <code>?v=2</code> returning the v=1 bytes.</p>
+<p><code>Vary: Cookie</code> is not the fix. A shared cache keyed per cookie has one entry per user, which is a</p>
+<p>private cache with extra steps and a fresh way to fill the disk.</p>
+<p>Measured on loopback with invented data: the deception takes 2 requests and 115 bytes, and after</p>
+<p>the fix the attacker&#x27;s request is a 302 with 0 bytes while a legitimate static asset still hits the</p>
+<p>cache. Limits, honestly: my cache is forty lines I wrote in an afternoon; real CDNs normalise, vary</p>
+<p>on more headers and have their own rules. What I measured is the class of defect — the app and the</p>
+<p>cache disagreeing about what a path is — not any deployed product, and nothing left 127.0.0.1.</p>
+<p>---</p>
+<h2>Day 33 notes</h2>
+<ul><li>Concept #33: code ran, output above — 1,806,706 attempts cut to 85,939, and the model worth 105.42x. ✔</li><li>Security #33: cache deception reproduced on loopback only, then closed; attacker reads 0 bytes after the fix. ✔</li><li>Two corrections during the day: the timetable was missing the room constraint (864 fake solutions), and MRV turned out to be a no-op without domain maintenance. ✔</li><li>1567 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 033 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>
