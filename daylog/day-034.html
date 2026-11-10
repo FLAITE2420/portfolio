@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 034 — AC-3 kept every value on three instances with zero solutions · Matías Rathgeb</title>
+<meta name="description" content="Day 034 of 1600. A student's private learning log.">
+<style>
+  :root{--white:#ffffff;--black:#000000;--gray:#86868b;--border:#d2d2d7;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--white);color:var(--black);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:var(--black);}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px;}
+  header{padding:80px 0 40px;border-bottom:1px solid var(--border);}
+  header .day{font-size:13px;color:var(--gray);letter-spacing:0.2px;margin-bottom:16px;}
+  header h1{font-size:40px;line-height:1.07;letter-spacing:-0.02em;font-weight:600;margin-bottom:12px;}
+  header .meta{font-size:13px;color:var(--gray);}
+  article{padding:48px 0 80px;}
+  h2{font-size:24px;line-height:1.15;letter-spacing:-0.01em;font-weight:600;margin:40px 0 16px;}
+  h3{font-size:17px;font-weight:600;margin:28px 0 10px;}
+  p{margin-bottom:16px;}
+  pre{background:#f5f5f7;border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.5;margin-bottom:16px;}
+  code{font-family:Menlo,Consolas,monospace;font-size:13px;}
+  ul,ol{margin:0 0 16px 22px;}
+  li{margin-bottom:6px;}
+  .verdict{border:1px solid var(--black);padding:20px 24px;margin-top:40px;}
+  .verdict p{margin-bottom:8px;}
+  footer{padding:40px 0 80px;border-top:1px solid var(--border);color:var(--gray);font-size:12px;}
+  @media(max-width:600px){header h1{font-size:30px;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="day">DAY 034 OF 1600 · 2026-11-10</p>
+    <h1>Day 034 — AC-3 kept every value on three instances with zero solutions</h1>
+    <p class="meta">A student's private learning log · one concept at a time.</p>
+  </div>
+</header>
+<article>
+  <div class="wrap">
+<p><strong>Date:</strong> 2026-11-10 · <strong>Day:</strong> 34 of 1600  </p>
+<p><strong>Log:</strong> a student&#x27;s private learning log · one concept at a time.</p>
+<p>---</p>
+<h2>Concept #34 — A pruner that keeps everything, and the graph shape that makes it complete</h2>
+<p>MA08, Intelligent Search, week 5. Week 4 built the model: variables, domains, constraints, and</p>
+<p>depth-first assignment over them. Week 5 asks what can be taken <em>out</em> of the search before it</p>
+<p>starts. The slides name three levers: prune the domains, repair a complete assignment, exploit the</p>
+<p>shape of the constraint graph.</p>
+<p>The pruning lever is the one that gets treated as a certificate. <code>REVISE(X, Y)</code> deletes every value</p>
+<p>of X that has no compatible value in Y. AC-3 puts all arcs in a queue, revises them, and re-enqueues</p>
+<p>the neighbours of any variable whose domain shrank, until the queue empties or a domain does. If it</p>
+<p>ends with every domain non-empty, the CSP is arc-consistent. That is the entire guarantee.</p>
+<p>Arc-consistent is not satisfiable — the slides say it twice, in two different places — so I built the</p>
+<p>smallest set of instances where I could count the gap by brute force.</p>
+<p>All four use one constraint (two neighbours must differ), so what changes between rows is the graph,</p>
+<p>not the constraint language.</p>
+<p><strong>What I tried today:</strong> one file, stdlib only, no network. A generic AC-3 over a queue, a</p>
+<p>backtracking solver with three inference modes, a tree solver that never searches, and min-conflicts</p>
+<p>with and without the escape move. Four small instances I could enumerate exhaustively, one</p>
+<p>unsatisfiable tree, and one 12-node tree.</p>
+<pre><code>&quot;&quot;&quot;Day 34 concept: what arc consistency proves, and what a tree lets you skip.
+
+One file, stdlib only, no network. Every number printed below came from this run.
+Every constraint here is the same one -- two neighbours must differ -- so what
+changes between the instances is structure, never the constraint language.
+&quot;&quot;&quot;
+
+import random
+from collections import deque
+
+
+class CSP:
+    def __init__(self, variables, domains, edges):
+        self.vars = list(variables)
+        self.dom0 = {v: list(domains[v]) for v in self.vars}
+        self.nb = {v: [] for v in self.vars}
+        for a, b in edges:
+            self.nb[a].append(b)
+            self.nb[b].append(a)
+
+    def ok(self, a, x, b, y):
+        return x != y          # &quot;different value&quot; is the whole constraint language today
+
+
+def php(pigeons, holes):
+    &quot;&quot;&quot;Pigeonhole: any two pigeons need different holes. Complete graph.&quot;&quot;&quot;
+    vs = [&quot;p%d&quot; % i for i in range(pigeons)]
+    edges = [(a, b) for i, a in enumerate(vs) for b in vs[i + 1:]]
+    return CSP(vs, {v: list(range(holes)) for v in vs}, edges)
+
+
+def ring(n, col):
+    vs = [&quot;r%d&quot; % i for i in range(n)]
+    return CSP(vs, {v: list(range(col)) for v in vs},
+               [(vs[i], vs[(i + 1) % n]) for i in range(n)])
+
+
+def tree12(col):
+    &quot;&quot;&quot;12 nodes: path t0..t7, leaves t8,t9 on t3, leaves t10,t11 on t6. 11 edges.&quot;&quot;&quot;
+    vs = [&quot;t%d&quot; % i for i in range(12)]
+    edges = [(vs[i], vs[i + 1]) for i in range(7)]
+    edges += [(vs[3], &quot;t8&quot;), (vs[3], &quot;t9&quot;), (vs[6], &quot;t10&quot;), (vs[6], &quot;t11&quot;)]
+    return CSP(vs, {v: list(range(col)) for v in vs}, edges)
+
+
+def ac3(csp, dom):
+    &quot;&quot;&quot;Queue-based arc consistency (AIMA REVISE + queue). Returns (ok, arcs, pruned).&quot;&quot;&quot;
+    q = deque((a, b) for a in csp.vars for b in csp.nb[a])
+    arcs = pruned = 0
+    while q:
+        xi, xj = q.popleft()
+        arcs += 1
+        keep = [x for x in dom[xi] if any(csp.ok(xi, x, xj, y) for y in dom[xj])]
+        if len(keep) != len(dom[xi]):
+            pruned += len(dom[xi]) - len(keep)
+            dom[xi] = keep
+            if not keep:
+                return False, arcs, pruned
+            q.extend((xk, xi) for xk in csp.nb[xi] if xk != xj)
+    return True, arcs, pruned
+
+
+def backtrack(csp, mode=&quot;plain&quot;):
+    &quot;&quot;&quot;Depth-first assignment. mode: plain | fc | mac. The counters are the evidence.&quot;&quot;&quot;
+    vs = list(csp.vars)
+    dom = {v: list(csp.dom0[v]) for v in csp.vars}
+    st = {&quot;tried&quot;: 0, &quot;rollbacks&quot;: 0}
+    assign = {}
+
+    def bt():
+        if len(assign) == len(vs):
+            return True
+        v = next(u for u in vs if u not in assign)
+        for x in list(dom[v]):
+            if any(u in assign and not csp.ok(v, x, u, assign[u]) for u in csp.nb[v]):
+                continue
+            st[&quot;tried&quot;] += 1
+            snap = {u: list(d) for u, d in dom.items()}
+            assign[v] = x
+            dom[v] = [x]
+            good = True
+            for u in csp.nb[v]:
+                if u in assign:
+                    continue
+                if mode in (&quot;fc&quot;, &quot;mac&quot;):
+                    keep = [y for y in dom[u] if csp.ok(u, y, v, x)]
+                    dom[u] = keep
+                    if not keep:
+                        good = False
+                        break
+            if good and mode == &quot;mac&quot;:
+                good, _, _ = ac3(csp, dom)
+            if good and bt():
+                return True
+            dom.clear()
+            dom.update({u: list(d) for u, d in snap.items()})
+            del assign[v]
+            st[&quot;rollbacks&quot;] += 1
+        return False
+
+    bt()
+    return st
+
+
+def brute_solutions(csp):
+    &quot;&quot;&quot;Only for small instances: full enumeration, no cleverness.&quot;&quot;&quot;
+    total = 1
+    for v in csp.vars:
+        total *= len(csp.dom0[v])
+    n = 0
+    for code in range(total):
+        pick, rest = {}, code
+        for v in csp.vars:
+            d = csp.dom0[v]
+            pick[v] = d[rest % len(d)]
+            rest //= len(d)
+        if all(pick[a] != pick[b] for a in csp.vars for b in csp.nb[a] if a &lt; b):
+            n += 1
+    return n, total
+
+
+def is_tree(csp):
+    &quot;&quot;&quot;Connected and exactly |V| - 1 undirected edges -- the test from the lab.&quot;&quot;&quot;
+    edges = {tuple(sorted((a, b))) for a in csp.vars for b in csp.nb[a] if a != b}
+    if len(edges) != len(csp.vars) - 1:
+        return False
+    seen = {csp.vars[0]}
+    q = deque([csp.vars[0]])
+    while q:
+        u = q.popleft()
+        for w in csp.nb[u]:
+            if w not in seen:
+                seen.add(w)
+                q.append(w)
+    return len(seen) == len(csp.vars)
+
+
+def solve_tree(csp):
+    &quot;&quot;&quot;Tree theorem: one AC-3 call, then one downward walk. No search at all.
+
+    On a tree, AC-3 is complete: it either empties a domain (unsatisfiable) or
+    makes every value of a node supported by a value of each neighbour, so the
+    child always still holds a value that agrees with the parent&#x27;s choice.
+    &quot;&quot;&quot;
+    dom = {v: list(csp.dom0[v]) for v in csp.vars}
+    ok, arcs, pruned = ac3(csp, dom)
+    if not ok:
+        return None, pruned, arcs, 0
+    root = csp.vars[0]
+    parent, order = {root: None}, []
+    q = deque([root])
+    while q:
+        u = q.popleft()
+        order.append(u)
+        for w in csp.nb[u]:
+            if w not in parent:
+                parent[w] = u
+                q.append(w)
+    assign = {root: dom[root][0]}
+    steps = 1
+    for u in order[1:]:
+        p = parent[u]
+        assign[u] = next(x for x in dom[u] if csp.ok(u, x, p, assign[p]))
+        steps += 1
+    return assign, pruned, arcs, steps
+
+
+def min_conflicts(csp, steps=2000, seed=34, walk=0.2):
+    &quot;&quot;&quot;Repair-based local search, with the escape move the slides ask for.&quot;&quot;&quot;
+    rng = random.Random(seed)
+    val = {v: rng.choice(csp.dom0[v]) for v in csp.vars}
+
+    def bad(v):
+        return sum(1 for u in csp.nb[v] if val[u] == val[v])
+
+    for s in range(1, steps + 1):
+        broken = [v for v in csp.vars if bad(v)]
+        if not broken:
+            return s - 1, 0, True
+        v = rng.choice(broken)
+        if rng.random() &lt; walk:
+            val[v] = rng.choice(csp.dom0[v])
+        else:
+            val[v] = min(csp.dom0[v], key=lambda x: sum(1 for u in csp.nb[v] if val[u] == x))
+    return steps, sum(1 for v in csp.vars if bad(v)), False
+
+
+print(&quot;AC-3 ALONE, ON FOUR INSTANCES WHERE IT IS ASKED TO BE A CERTIFICATE&quot;)
+print(&quot;%-27s %4s %3s %4s %7s %5s   %s&quot; %
+      (&quot;instance&quot;, &quot;vars&quot;, &quot;dom&quot;, &quot;AC3&quot;, &quot;pruned&quot;, &quot;arcs&quot;, &quot;solutions (brute force)&quot;))
+instances = [(&quot;php 4 pigeons / 3 holes&quot;, php(4, 3)),
+             (&quot;php 5 pigeons / 4 holes&quot;, php(5, 4)),
+             (&quot;ring C8 / 2 colours&quot;, ring(8, 2)),
+             (&quot;ring C9 / 2 colours&quot;, ring(9, 2))]
+for name, c in instances:
+    ok, arcs, pruned = ac3(c, {v: list(c.dom0[v]) for v in c.vars})
+    sol, total = brute_solutions(c)
+    print(&quot;%-27s %4d %3d %4s %7d %5d   %d of %d&quot; %
+          (name, len(c.vars), len(c.dom0[c.vars[0]]), &quot;yes&quot; if ok else &quot;NO&quot;,
+           pruned, arcs, sol, total))
+
+print()
+print(&quot;C8 and C9 end with the identical domains {0,1}^n and neither loses a value.&quot;)
+print(&quot;One has 2 solutions, the other 0: a test that only reads the domains&quot;)
+print(&quot;cannot tell an even cycle from an odd one. Local support is not a proof.&quot;)
+
+print()
+print(&quot;WHAT SEARCH COSTS WHEN THE CERTIFICATE IS USELESS&quot;)
+print(&quot;%-34s %8s %10s&quot; % (&quot;method&quot;, &quot;tried&quot;, &quot;rollbacks&quot;))
+for label, c in ((&quot;php 5 pigeons / 4 holes&quot;, php(5, 4)), (&quot;ring C9 / 2 colours&quot;, ring(9, 2))):
+    for mode in (&quot;plain&quot;, &quot;fc&quot;, &quot;mac&quot;):
+        st = backtrack(c, mode)
+        print(&quot;%-34s %8d %10d&quot; % (label + &quot; + &quot; + mode, st[&quot;tried&quot;], st[&quot;rollbacks&quot;]))
+
+print()
+print(&quot;STRUCTURE: THE SAME AC-3 CALL, ONE GRAPH THAT IS A TREE AND ONE THAT IS NOT&quot;)
+t = tree12(3)
+assign, tpruned, tarcs, steps = solve_tree(t)
+valid = assign is not None and all(assign[a] != assign[b] for a in t.vars for b in t.nb[a] if a &lt; b)
+print(&quot;tree, 12 nodes / 3 colours: is_tree=%s  AC3=yes  pruned=%d  arcs=%d&quot; %
+      (is_tree(t), tpruned, tarcs))
+print(&quot;  solved by AC-3 + one downward walk: assignments=%d  rollbacks=0  valid=%s&quot; %
+      (steps, valid))
+
+leaves = [&quot;a0&quot;, &quot;a1&quot;, &quot;a2&quot;]
+unsat_tree = CSP([&quot;hub&quot;] + leaves,
+                 {&quot;hub&quot;: [0, 1], &quot;a0&quot;: [0], &quot;a1&quot;: [1], &quot;a2&quot;: [0, 1, 2]},
+                 [(&quot;hub&quot;, l) for l in leaves])
+ok, arcs, pruned = ac3(unsat_tree, {v: list(unsat_tree.dom0[v]) for v in unsat_tree.vars})
+print(&quot;tree, 4 nodes / hub on {0,1} with two pinned leaves: is_tree=%s&quot; % is_tree(unsat_tree))
+print(&quot;  AC-3 verdict=%s after %d arcs, pruned=%d, value attempts=0&quot; %
+      (&quot;NO&quot; if not ok else &quot;yes&quot;, arcs, pruned))
+print(&quot;  truth: hub=0 clashes with a0, hub=1 clashes with a1 -&gt; 0 solutions, proven by AC-3&quot;)
+
+cut = [&quot;r%d&quot; % i for i in range(8)]
+path = CSP(cut, {v: [0, 1] for v in cut}, [(cut[i], cut[i + 1]) for i in range(7)])
+print(&quot;ring C9 minus one node = path of 8: is_tree=%s (ring C9 itself: is_tree=%s)&quot; %
+      (is_tree(path), is_tree(ring(9, 2))))
+
+print()
+print(&quot;LOCAL SEARCH: COMPLETE PROBLEM OR NOT&quot;)
+for label, c, w in ((&quot;ring C8 / 2 colours, no escape&quot;, ring(8, 2), 0.0),
+                    (&quot;ring C8 / 2 colours, 20% walk&quot;, ring(8, 2), 0.2),
+                    (&quot;ring C9 / 2 colours, 20% walk&quot;, ring(9, 2), 0.2)):
+    used, left, found = min_conflicts(c, walk=w)
+    print(&quot;min-conflicts %-31s steps=%-5d conflicts left=%-2d solved=%s&quot; %
+          (label + &quot;:&quot;, used, left, found))</code></pre>
+<p>Real output:</p>
+<pre><code>AC-3 ALONE, ON FOUR INSTANCES WHERE IT IS ASKED TO BE A CERTIFICATE
+instance                    vars dom  AC3  pruned  arcs   solutions (brute force)
+php 4 pigeons / 3 holes        4   3  yes       0    12   0 of 81
+php 5 pigeons / 4 holes        5   4  yes       0    20   0 of 1024
+ring C8 / 2 colours            8   2  yes       0    16   2 of 256
+ring C9 / 2 colours            9   2  yes       0    18   0 of 512
+
+C8 and C9 end with the identical domains {0,1}^n and neither loses a value.
+One has 2 solutions, the other 0: a test that only reads the domains
+cannot tell an even cycle from an odd one. Local support is not a proof.
+
+WHAT SEARCH COSTS WHEN THE CERTIFICATE IS USELESS
+method                                tried  rollbacks
+php 5 pigeons / 4 holes + plain          64         64
+php 5 pigeons / 4 holes + fc             64         64
+php 5 pigeons / 4 holes + mac            40         40
+ring C9 / 2 colours + plain              16         16
+ring C9 / 2 colours + fc                 16         16
+ring C9 / 2 colours + mac                 2          2
+
+STRUCTURE: THE SAME AC-3 CALL, ONE GRAPH THAT IS A TREE AND ONE THAT IS NOT
+tree, 12 nodes / 3 colours: is_tree=True  AC3=yes  pruned=0  arcs=22
+  solved by AC-3 + one downward walk: assignments=12  rollbacks=0  valid=True
+tree, 4 nodes / hub on {0,1} with two pinned leaves: is_tree=True
+  AC-3 verdict=NO after 2 arcs, pruned=2, value attempts=0
+  truth: hub=0 clashes with a0, hub=1 clashes with a1 -&gt; 0 solutions, proven by AC-3
+ring C9 minus one node = path of 8: is_tree=True (ring C9 itself: is_tree=False)
+
+LOCAL SEARCH: COMPLETE PROBLEM OR NOT
+min-conflicts ring C8 / 2 colours, no escape: steps=2000  conflicts left=4  solved=False
+min-conflicts ring C8 / 2 colours, 20% walk:  steps=49    conflicts left=0  solved=True
+min-conflicts ring C9 / 2 colours, 20% walk:  steps=2000  conflicts left=2  solved=False</code></pre>
+<p>A column of zeros, three times, on instances with no solution at all: 4 pigeons into 3 holes, 5 into</p>
+<p>4, and a 9-node cycle with 2 colours. AC-3 revised 12, 20 and 18 arcs, found support for every single</p>
+<p>value, and returned success. The brute-force column is the truth: 0, 0, 0.</p>
+<p>The pair worth reading twice is rows three and four. C8 and C9 end with the <strong>identical</strong> domains —</p>
+<p><code>{0,1}</code> on every variable, not one value removed — and one has 2 solutions while the other has 0.</p>
+<p>Any check that reads only the output of AC-3 cannot tell an even cycle from an odd one. Not &quot;does not</p>
+<p>usually&quot;: cannot. The information is not in the domains. The proof is three lines long: on a</p>
+<p>2-coloured cycle every value is supported by the neighbour on either side, and the parity only</p>
+<p>becomes a contradiction when the last assignment closes the loop — which is exactly the structure</p>
+<p>support checking does not see.</p>
+<p>So the certificate is worthless where it is needed most, and the next question is what the truth</p>
+<p>costs. Two things surprised me:</p>
+<ul><li><strong>Forward checking is identical to plain backtracking here, to the digit</strong> — 64 and 64 on the</li></ul>
+<p>  pigeonhole instance, 16 and 16 on the odd cycle. On a complete graph with a single &quot;different</p>
+<p>  value&quot; constraint, FC&#x27;s pruning removes precisely the values the consistency check would have</p>
+<p>  rejected one step later, so it does the same work under a different name. FC earns its keep when</p>
+<p>  the constraint is tighter than the domain; here it is not.</p>
+<ul><li><strong>MAC is not FC with a new label.</strong> It is the same AC-3, called after each assignment instead of</li></ul>
+<p>  once at the start, and that is where the attempts went: 64 → 40, and 16 → 2. Static AC-3 pruned</p>
+<p>  nothing; AC-3 maintained during the search pruned the whole branch in two nodes.</p>
+<p>That is the lesson of the week, and it is the opposite of what I assumed: the strength was never in</p>
+<p>AC-3&#x27;s output, it was in <em>when</em> AC-3 runs.</p>
+<p>The third lever changes the asymptotics. A 12-node tree, 3 colours: AC-3 finishes arc-consistent</p>
+<p>having pruned nothing (a tree is always 2-colourable under a &quot;different value&quot; constraint, so there</p>
+<p>is nothing to prune), and then the assignment is a walk — root takes its first value, each node</p>
+<p>downward picks a value that agrees with its parent. 12 assignments, 0 rollbacks, and <code>next(...)</code></p>
+<p>never raised, because arc consistency on a tree means every value of a parent is supported by a</p>
+<p>value that survives in the child, so the child can always follow. No choice points to undo.</p>
+<p>The same call on an <strong>unsatisfiable</strong> tree gives a verdict with zero search: hub on <code>{0,1}</code>, two</p>
+<p>leaves pinned at 0 and 1, a third free. AC-3 empties the hub after 2 arcs, 0 value attempts. On a</p>
+<p>tree arc consistency is complete; on the 9-cycle it was not; the difference between those two graphs</p>
+<p>is one cycle. That is why &quot;ring minus one node&quot; — a path of 8, <code>is_tree=True</code> — is the standard</p>
+<p>repair for almost-a-tree: cut the cycle, enumerate the cut variable, and every branch is a tree you</p>
+<p>solve without search. Ring C9 has treewidth 2; the pigeonhole instance is a complete graph, treewidth</p>
+<p>n−1, and no decomposition will save it. That is the honest boundary of this lever.</p>
+<p>Min-conflicts is the fourth lever and the only one with no guarantee. Start complete, pick a</p>
+<p>conflicted variable, move it to the value with the fewest conflicts. On C8, where 2 solutions exist</p>
+<p>out of 256, a purely greedy run ended after 2000 steps with 4 conflicts and no solution — the plateau</p>
+<p>where every move leaves the count identical. Adding the escape move the slides ask for (a 20% chance</p>
+<p>of picking a random value) solved it in 49 steps. On C9 there is nothing to find and it never</p>
+<p>converged: 2000 steps, 2 conflicts left. Fast, memory-light, and unable to prove a negative — the</p>
+<p>exact trade against backtracking.</p>
+<p><strong>What I understood from it:</strong> arc consistency is a statement about pairs; satisfiability is a</p>
+<p>statement about the whole graph. On trees the two coincide — that is a theorem, not a habit, and it</p>
+<p>is why acyclic structure is worth hunting for. Everywhere else AC-3 buys pruning and nothing more,</p>
+<p>and the honest way to measure a pruner is not how many values it deletes at the start but how much</p>
+<p>search it deletes while the search is running. This morning I had those two backwards.</p>
+<p>---</p>
+<h2>Security #34 — The upload that is 2,694 bytes and declares four gigabytes</h2>
+<p>CWE-409, decompression bomb. The defect is not a memory-safety bug; it is a number the receiver</p>
+<p>agrees to trust. A zip&#x27;s central directory states, for every member, how many bytes it will produce.</p>
+<p>Zeros compress to about a thousandth of their size, so 2.7 KB of nested archives can declare four</p>
+<p>gigabytes — and the declaration is not a lie, which is what makes it work: an extractor that honours</p>
+<p>it writes all four gigabytes.</p>
+<p>What survives the usual checks is nesting. A single archive with a 1000:1 ratio is easy to flag. Four</p>
+<p>levels of four members each: the file an upload endpoint sees is 2,694 bytes, its top level declares</p>
+<p>8,584 bytes across 4 members — a ratio of 3:1 that passes any plausible limit, because the</p>
+<p>compression only shows up at the bottom.</p>
+<p><strong>The pattern I studied:</strong> a recursive extractor that carries no counter — every member&#x27;s declared</p>
+<p>size is read, trusted, and turned into writes.</p>
+<pre><code>def inflate_all(zbytes, budget=None):
+    &quot;&quot;&quot;What an extractor with no limit would write. Output is discarded, only counted.&quot;&quot;&quot;
+    z = zipfile.ZipFile(io.BytesIO(zbytes))
+    nbytes = nfiles = 0
+    for info in z.infolist():
+        if info.filename.lower().endswith(&quot;.zip&quot;):
+            b, f, stopped = inflate_all(z.read(info), budget)</code></pre>
+<p>I built it in <code>/tmp</code>, four levels, sixteen megabytes of zeros per leaf, then walked it three ways:</p>
+<p>read the central directories only, inflated the whole thing into a sink that counts and throws the</p>
+<p>bytes away, and ran a guarded extractor that audits before it opens anything.</p>
+<pre><code>&quot;&quot;&quot;Day 34 security: an archive bomb that looks like a 4 MiB upload (CWE-409).
+
+Built, measured and defused inside /tmp. Nothing here touches a network, a real
+service or a real archive: every byte is generated by this script.
+Deterministic output: same bytes, same numbers, every run.
+&quot;&quot;&quot;
+
+import io
+import os
+import shutil
+import struct
+import zipfile
+import zlib
+
+WORK = &quot;/tmp/day034/bomb&quot;
+LEAF = 16 * 1024 * 1024          # 16 MiB of zeros per payload file
+FAN = 4                          # members per level
+LEVELS = 4                       # nested archives, as in the classic 42.zip
+BUDGET = 64 * 1024 * 1024        # what a sane extractor should allow
+MAXFILES = 64
+
+
+def make_zip(entries):
+    &quot;&quot;&quot;Fixed timestamps and attributes: the same entries must give the same bytes.&quot;&quot;&quot;
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, &quot;w&quot;, zipfile.ZIP_DEFLATED) as z:
+        for name, data in entries:
+            zi = zipfile.ZipInfo(name, date_time=(2026, 11, 10, 0, 0, 0))
+            zi.compress_type = zipfile.ZIP_DEFLATED
+            zi.external_attr = 0o600 &lt;&lt; 16
+            z.writestr(zi, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+    return buf.getvalue()
+
+
+shutil.rmtree(WORK, ignore_errors=True)
+os.makedirs(WORK)
+
+layer = make_zip([(&quot;payload%d.bin&quot; % i, b&quot;\x00&quot; * LEAF) for i in range(FAN)])
+for lvl in range(2, LEVELS + 1):
+    layer = make_zip([(&quot;part%d.zip&quot; % i, layer) for i in range(FAN)])
+top_path = os.path.join(WORK, &quot;upload.zip&quot;)
+with open(top_path, &quot;wb&quot;) as f:
+    f.write(layer)
+
+disk = os.path.getsize(top_path)
+print(&quot;built: %s&quot; % top_path)
+print(&quot;  on disk: %d B   levels: %d   members per level: %d&quot; % (disk, LEVELS, FAN))
+
+zf = zipfile.ZipFile(top_path)
+members = zf.infolist()
+declared_here = sum(m.file_size for m in members)
+print(&quot;  what a reader sees at the top: %d members, %d B declared, ratio %d:%d&quot;
+      % (len(members), declared_here, declared_here // disk, 1))
+print(&quot;  the file is an upload any size check would wave through.&quot;)
+
+
+def declared_total(zbytes, depth=0):
+    &quot;&quot;&quot;Read central directories only. Inflates inner zips, never a payload.&quot;&quot;&quot;
+    z = zipfile.ZipFile(io.BytesIO(zbytes))
+    total = files = deepest = 0
+    for info in z.infolist():
+        if info.filename.lower().endswith(&quot;.zip&quot;):
+            inner_bytes, inner_files, inner_depth = declared_total(z.read(info), depth + 1)
+            total += inner_bytes
+            files += inner_files
+            deepest = max(deepest, inner_depth)
+        else:
+            total += info.file_size
+            files += 1
+            deepest = max(deepest, depth)
+    return total, files, deepest
+
+
+total, files, deepest = declared_total(layer)
+print(&quot;  recursive declared total, no payload inflated: %d B (%.2f GiB), %d files, depth %d&quot;
+      % (total, total / (1024 ** 3), files, deepest))
+print(&quot;  ratio against the file on disk: %.0f:1&quot; % (total / disk))
+
+
+def per_level_ratio(zbytes, depth=1):
+    &quot;&quot;&quot;The check people actually write: declared / compressed, per archive.&quot;&quot;&quot;
+    z = zipfile.ZipFile(io.BytesIO(zbytes))
+    declared = sum(i.file_size for i in z.infolist())
+    print(&quot;    level %d: %d B on disk -&gt; %d B declared, ratio %.0f:1&quot;
+          % (depth, len(zbytes), declared, declared / len(zbytes)))
+    for info in z.infolist():
+        if info.filename.lower().endswith(&quot;.zip&quot;):
+            per_level_ratio(z.read(info), depth + 1)
+            break          # every branch is identical; one is the whole story
+
+
+print(&quot;  the same archive, checked one level at a time:&quot;)
+per_level_ratio(layer)
+
+
+def inflate_all(zbytes, budget=None):
+    &quot;&quot;&quot;What an extractor with no limit would write. Output is discarded, only counted.&quot;&quot;&quot;
+    z = zipfile.ZipFile(io.BytesIO(zbytes))
+    nbytes = nfiles = 0
+    for info in z.infolist():
+        if info.filename.lower().endswith(&quot;.zip&quot;):
+            b, f, stopped = inflate_all(z.read(info), budget)
+            nbytes += b
+            nfiles += f
+            if stopped:
+                return nbytes, nfiles, True
+        else:
+            with z.open(info) as fh:
+                while True:
+                    chunk = fh.read(1 &lt;&lt; 20)
+                    if not chunk:
+                        break
+                    nbytes += len(chunk)
+                    if budget is not None and nbytes &gt;= budget:
+                        return nbytes, nfiles + 1, True
+            nfiles += 1
+    return nbytes, nfiles, False
+
+
+written, files_written, _ = inflate_all(layer)
+print()
+print(&quot;full inflate, output counted and thrown away: %d B (%.2f GiB) from %d files&quot;
+      % (written, written / (1024 ** 3), files_written))
+print(&quot;  the headers were honest. nothing here is a guess.&quot;)
+
+
+def guarded_extract(zbytes, budget=BUDGET, maxfiles=MAXFILES):
+    &quot;&quot;&quot;Audit first: cost is the size of the archive, not the size of the bomb.&quot;&quot;&quot;
+    try:
+        total, files, _ = declared_total(zbytes)
+    except (zipfile.BadZipFile, OSError):
+        return &quot;reject&quot;, &quot;unreadable archive&quot;, 0
+    if total &gt; budget:
+        return &quot;reject&quot;, &quot;%d B declared &gt; %d B budget&quot; % (total, budget), 0
+    if files &gt; maxfiles:
+        return &quot;reject&quot;, &quot;%d files &gt; %d&quot; % (files, maxfiles), 0
+    n = 0
+    z = zipfile.ZipFile(io.BytesIO(zbytes))
+    for info in z.infolist():
+        with z.open(info) as fh:
+            while True:
+                chunk = fh.read(1 &lt;&lt; 20)
+                if not chunk:
+                    break
+                n += len(chunk)
+                if n &gt; budget:          # the header can lie; the byte count cannot
+                    return &quot;reject&quot;, &quot;stream exceeded budget at %d B&quot; % n, n
+    return &quot;accept&quot;, &quot;total %d B&quot; % n, n
+
+
+verdict, why, produced = guarded_extract(layer)
+print()
+print(&quot;guarded extractor on the bomb: %s (%s), payload bytes produced: %d&quot;
+      % (verdict, why, produced))
+
+capped, capped_files, stopped = inflate_all(layer, budget=BUDGET)
+print(&quot;no audit, only a running byte cap: stopped at %d B after %d files&quot;
+      % (capped, capped_files))
+
+legit_text = b&quot;line of a normal report\n&quot; * 80000          # ~1.8 MiB
+legit = make_zip([(&quot;notes.txt&quot;, legit_text)])
+verdict, why, produced = guarded_extract(legit)
+print(&quot;guarded extractor on a normal 2 MiB archive: %s (%s)&quot; % (verdict, why))
+
+
+def forged_member():
+    &quot;&quot;&quot;A 1147-byte zip whose header says 100 B and whose stream carries 1 MiB.&quot;&quot;&quot;
+    data = b&quot;\x00&quot; * (1 &lt;&lt; 20)
+    co = zlib.compressobj(9, zlib.DEFLATED, -15)
+    comp = co.compress(data) + co.flush()
+    name = b&quot;note.txt&quot;
+    lie = 100
+    crc = zlib.crc32(data[:lie]) &amp; 0xFFFFFFFF
+    lh = struct.pack(&quot;&lt;4s5H3I2H&quot;, b&quot;PK\x03\x04&quot;, 20, 0, 8, 0, 0, crc,
+                     len(comp), lie, len(name), 0) + name
+    body = lh + comp
+    cd = struct.pack(&quot;&lt;4s6H3I5H2I&quot;, b&quot;PK\x01\x02&quot;, 20, 20, 0, 8, 0, 0, crc,
+                     len(comp), lie, len(name), 0, 0, 0, 0, 0, 0) + name
+    eocd = struct.pack(&quot;&lt;4s4H2IH&quot;, b&quot;PK\x05\x06&quot;, 0, 0, 1, 1, len(cd), len(body), 0)
+    return body + cd + eocd, comp
+
+
+blob, comp = forged_member()
+z = zipfile.ZipFile(io.BytesIO(blob))
+info = z.infolist()[0]
+trusting = z.read(info)
+raw = zlib.decompress(comp, -15)
+print()
+print(&quot;forged header: archive %d B, central directory declares %d B&quot; % (len(blob), info.file_size))
+print(&quot;  reader that trusts the header: %d B, no error, crc passes&quot; % len(trusting))
+print(&quot;  reader that inflates the stream: %d B&quot; % len(raw))
+print(&quot;  two readers, one archive, %d:1 apart. The declared size is a claim, not a fact.&quot;
+      % (len(raw) // len(trusting)))</code></pre>
+<p>Real output:</p>
+<pre><code>built: /tmp/day034/bomb/upload.zip
+  on disk: 2694 B   levels: 4   members per level: 4
+  what a reader sees at the top: 4 members, 8584 B declared, ratio 3:1
+  the file is an upload any size check would wave through.
+  recursive declared total, no payload inflated: 4294967296 B (4.00 GiB), 256 files, depth 3
+  ratio against the file on disk: 1594271:1
+  the same archive, checked one level at a time:
+    level 1: 2694 B on disk -&gt; 8584 B declared, ratio 3:1
+    level 2: 2146 B on disk -&gt; 6920 B declared, ratio 3:1
+    level 3: 1730 B on disk -&gt; 262648 B declared, ratio 152:1
+    level 4: 65662 B on disk -&gt; 67108864 B declared, ratio 1022:1
+
+full inflate, output counted and thrown away: 4294967296 B (4.00 GiB) from 256 files
+  the headers were honest. nothing here is a guess.
+
+guarded extractor on the bomb: reject (4294967296 B declared &gt; 67108864 B budget), payload bytes produced: 0
+no audit, only a running byte cap: stopped at 67108864 B after 4 files
+guarded extractor on a normal 2 MiB archive: accept (total 1920000 B)
+
+forged header: archive 1147 B, central directory declares 100 B
+  reader that trusts the header: 100 B, no error, crc passes
+  reader that inflates the stream: 1048576 B
+  two readers, one archive, 10485:1 apart. The declared size is a claim, not a fact.</code></pre>
+<p>The numbers are the whole argument: 2,694 bytes on disk, 4,294,967,296 bytes declared, and — when I</p>
+<p>actually inflated all of it — 4,294,967,296 bytes produced from 256 files. 1,594,271:1 end to end,</p>
+<p>honest headers, nothing rounded. The per-level breakdown shows where the check people actually write</p>
+<p>fails: 3:1 at the top, 3:1 at level two, and the 1022:1 that gives the game away only appears at</p>
+<p>level four, which no top-level size or ratio check ever opens.</p>
+<p>The second measurement is the one that changed how I think about the class. Sizes in a zip are written</p>
+<p>by whoever built the zip. A 1,147-byte archive whose central directory says 100 bytes: the reader that</p>
+<p>trusts the header — which is what the standard library does — returns 100 bytes, the CRC passes, no</p>
+<p>error. A reader that inflates the compressed stream gets 1,048,576 bytes out of the same member. Two</p>
+<p>readers, one file, 10,485 times apart. &quot;Check the declared size before extracting&quot; is therefore not a</p>
+<p>defence: it is asking the attacker how big their file is.</p>
+<p><strong>What I understood about preventing it:</strong> audit the whole tree before touching it — declared total,</p>
+<p>file count, depth, and a cap on the depth — because the audit costs the size of the archive (2,694</p>
+<p>bytes here) while the extraction costs what the archive claims. Then, because the header can lie,</p>
+<p>count the bytes as they come out, with one cumulative budget across the whole tree instead of a budget</p>
+<p>per file.</p>
+<pre><code>def guarded_extract(zbytes, budget=BUDGET, maxfiles=MAXFILES):
+    &quot;&quot;&quot;Audit first: cost is the size of the archive, not the size of the bomb.&quot;&quot;&quot;
+    try:
+        total, files, _ = declared_total(zbytes)
+    except (zipfile.BadZipFile, OSError):
+        return &quot;reject&quot;, &quot;unreadable archive&quot;, 0
+    if total &gt; budget:
+        return &quot;reject&quot;, &quot;%d B declared &gt; %d B budget&quot; % (total, budget), 0
+    if files &gt; maxfiles:
+        return &quot;reject&quot;, &quot;%d files &gt; %d&quot; % (files, maxfiles), 0
+    n = 0
+    z = zipfile.ZipFile(io.BytesIO(zbytes))
+    for info in z.infolist():
+        with z.open(info) as fh:
+            while True:
+                chunk = fh.read(1 &lt;&lt; 20)
+                if not chunk:
+                    break
+                n += len(chunk)
+                if n &gt; budget:          # the header can lie; the byte count cannot
+                    return &quot;reject&quot;, &quot;stream exceeded budget at %d B&quot; % n, n</code></pre>
+<p>Measured: the audit refused the bomb with 0 payload bytes inflated and 0 files written; the running</p>
+<p>cap alone stopped at 67,108,864 bytes after 4 files — a quarter of one percent of the payload, and</p>
+<p>already 4 files on disk. The same guard accepted a normal 1,920,000-byte archive.</p>
+<p>The limits of what I built, honestly: my audit inflates the inner zips to read their directories, so</p>
+<p>it is bounded by the compressed size of the archive, not by nothing — a 2.7 KB bomb is cheap to</p>
+<p>audit, a 200 MB bomb of bombs is not. And a byte cap stops the inflation, not the extractor: whatever</p>
+<p>it already wrote is on disk, which is why the extraction directory needs to be disposable and</p>
+<p>quota-limited, not just the stream watched.</p>
+<p>---</p>
+<h2>Day 34 notes</h2>
+<ul><li>Concept #34: code ran, output above — four instances, 0 values pruned, and 3 of 4 with no solution at all. ✔</li><li>Security #34: bomb built, measured and defused in /tmp only; 4,294,967,296 bytes inflated to a counting sink, 0 bytes written to any extractor. ✔</li><li>Two things I had wrong this morning: I assumed FC would equal MAC (it equals plain backtracking here), and I assumed AC-3&#x27;s value was in its output (it is in when it runs). ✔</li><li>1566 days left. One at a time.</li></ul>
+<p><em>Written by my own daily machine, checked by me.</em></p>
+  </div>
+</article>
+<footer>
+  <div class="wrap">
+    <p><a href="/">← Back to the index</a> · Day 034 of 1600 · Matías Rathgeb</p>
+  </div>
+</footer>
+</body>
+</html>
